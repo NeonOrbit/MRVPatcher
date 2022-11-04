@@ -1,19 +1,24 @@
 package org.lsposed.lspatch.share;
 
 public class Constants {
+    public static final String TAG = "MRVPatch";
 
-    final static public String CONFIG_ASSET_PATH = "assets/lspatch/config.json";
-    final static public String LOADER_DEX_ASSET_PATH = "assets/lspatch/loader.dex";
-    final static public String META_LOADER_DEX_ASSET_PATH = "assets/lspatch/metaloader.dex";
-    final static public String ORIGINAL_APK_ASSET_PATH = "assets/lspatch/origin.apk";
+    public static final String MRV_DATA_DIR = "mrvdata";
+    public static final String LSP_LIB_NAME = "liblspatch";
+    public static final String MRV_ASSET_DIR = "assets/mrvdata";
+    public static final String LIB_ASSET_DIR = MRV_ASSET_DIR + "/so";
+    public static final String LOADER_DEX_PATH = MRV_ASSET_DIR + "/loader";
+    public static final String META_LOADER_DEX_PATH = MRV_ASSET_DIR + "/metaloader";
+    
+    public static final String CONFIG_ASSET_PATH = MRV_ASSET_DIR + "/config.json";
+    public static final String ORIGINAL_APK_ASSET_PATH = MRV_ASSET_DIR + "/origin.pkg";
+    public static final String PROXY_APP_COMPONENT_FACTORY = "org.lsposed.lspatch.metaloader.LSPAppComponentFactoryStub";
 
-    final static public String PATCH_FILE_SUFFIX = "-lspatched.apk";
-    final static public String PROXY_APP_COMPONENT_FACTORY = "org.lsposed.lspatch.metaloader.LSPAppComponentFactoryStub";
-    final static public String MANAGER_PACKAGE_NAME = "org.lsposed.lspatch";
-    final static public int MIN_ROLLING_VERSION_CODE = 348;
+    public static String getLibraryPath(String arch) {
+        return LIB_ASSET_DIR + "/" + arch + "/" + LSP_LIB_NAME;
+    }
 
-    final static public int SIGBYPASS_LV_DISABLE = 0;
-    final static public int SIGBYPASS_LV_PM = 1;
-    final static public int SIGBYPASS_LV_PM_OPENAT = 2;
-    final static public int SIGBYPASS_LV_MAX = 3;
+    public static String getLibrarySoPath(String arch) {
+        return LIB_ASSET_DIR + "/" + arch + "/" + LSP_LIB_NAME + ".so";
+    }
 }

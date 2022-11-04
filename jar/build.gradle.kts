@@ -1,3 +1,8 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+
+val jarVersion: String by rootProject.extra
+
 val verCode: Int by rootProject.extra
 val verName: String by rootProject.extra
 val androidSourceCompatibility: JavaVersion by rootProject.extra
@@ -17,10 +22,14 @@ dependencies {
 }
 
 fun Jar.configure(variant: String) {
-    archiveBaseName.set("jar-v$verName-$verCode-$variant")
+    archiveBaseName.set("${rootProject.name}-$jarVersion-$variant")
     destinationDirectory.set(file("${rootProject.projectDir}/out/$variant"))
+    val buildDate = SimpleDateFormat("dd-MM-yyyy hh:mm:ss aa").format(Date())
     manifest {
         attributes("Main-Class" to "org.lsposed.patch.LSPatch")
+        attributes( "Program-Name" to archiveBaseName)
+        attributes( "Program-Version" to jarVersion)
+        attributes( "Program-Build-Time" to buildDate)
     }
     dependsOn(configurations.runtimeClasspath)
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
@@ -30,7 +39,10 @@ fun Jar.configure(variant: String) {
         from("${rootProject.projectDir}/out/assets")
     }
 
-    exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.MF", "META-INF/*.txt", "META-INF/versions/**")
+    exclude(
+        "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/*.MF",
+        "META-INF/*.txt", "META-INF/versions/**", "assets/new_keystore"
+    )
 }
 
 tasks.register<Jar>("buildDebug") {

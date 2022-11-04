@@ -5,6 +5,11 @@ plugins {
 android {
     defaultConfig {
         multiDexEnabled = false
+        externalNativeBuild {
+            cmake {
+                arguments += "-DCMAKE_OBJECT_PATH_MAX=1024"
+            }
+        }
     }
 
     buildTypes {
@@ -27,8 +32,8 @@ androidComponents.onVariants { variant ->
     task<Copy>("copyDex$variantCapped") {
         dependsOn("assemble$variantCapped")
         from("$buildDir/intermediates/dex/${variant.name}/mergeDex$variantCapped/classes.dex")
-        rename("classes.dex", "loader.dex")
-        into("${rootProject.projectDir}/out/assets/lspatch")
+        rename("classes.dex", "loader")
+        into("${rootProject.projectDir}/out/assets/mrvdata")
     }
 
     task<Copy>("copySo$variantCapped") {
@@ -39,7 +44,8 @@ androidComponents.onVariants { variant ->
                 "include" to listOf("**/liblspatch.so")
             )
         )
-        into("${rootProject.projectDir}/out/assets/lspatch/so")
+        rename("liblspatch.so", "liblspatch")
+        into("${rootProject.projectDir}/out/assets/mrvdata/so")
     }
 
     task("copy$variantCapped") {
