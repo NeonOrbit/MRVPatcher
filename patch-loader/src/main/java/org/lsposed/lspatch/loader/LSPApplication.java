@@ -1,8 +1,6 @@
 package org.lsposed.lspatch.loader;
 
 import static org.lsposed.lspatch.share.Constants.CONFIG_ASSET_PATH;
-import static org.lsposed.lspatch.share.Constants.MRV_DATA_DIR;
-import static org.lsposed.lspatch.share.Constants.ORIGINAL_APK_ASSET_PATH;
 
 import android.app.ActivityThread;
 import android.app.LoadedApk;
@@ -15,7 +13,6 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 
-import org.lsposed.lspatch.loader.util.FileUtils;
 import org.lsposed.lspatch.share.Constants;
 import org.lsposed.lspatch.share.PatchConfig;
 
@@ -23,18 +20,15 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.function.BiConsumer;
-import java.util.zip.ZipFile;
 
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.XposedInit;
@@ -100,24 +94,7 @@ public class LSPApplication {
             } catch (IOException e) {
                 Log.e(TAG, "Failed to load config file");
                 return null;
-            }        String originApkPath;
-            String mrvDataDirPath = appInfo.dataDir + "/" + MRV_DATA_DIR;
-            try (ZipFile sourceFile = new ZipFile(appInfo.sourceDir)) {
-                originApkPath = mrvDataDirPath + "/" + sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH).getCrc();
             }
-            if (!Files.exists(Paths.get(originApkPath))) {
-                Log.i(TAG, "Setting up base package");
-                int permission = 509;  // 00775
-                FileUtils.deleteFolderIfExists(Paths.get(mrvDataDirPath));
-                Files.createDirectories(Paths.get(mrvDataDirPath));
-                Os.chmod(mrvDataDirPath, permission);
-                try (InputStream is = baseClassLoader.getResourceAsStream(ORIGINAL_APK_ASSET_PATH)) {
-                    Files.copy(is, Paths.get(originApkPath));
-                }
-                Os.chmod(originApkPath, permission);
-            }
-            appInfo.sourceDir = originApkPath;
-            appInfo.publicSourceDir = originApkPath;
             appInfo.appComponentFactory = LSPApplication.config.component;
             updateLoadedApk(appInfo, loadedApk, mBoundApplication);
             Log.i(TAG, "ClassLoader initialized: " + appLoadedApk.getClassLoader());
@@ -165,42 +142,34 @@ public class LSPApplication {
 
     private static void lockProfile(Context context) {
         final ArrayList<String> codePaths = new ArrayList<>();
-        var appInfo = context.getApplicationInfo();
-        var pkgName = context.getPackageName();
+        final String packageName = context.getPackageName();
+        final ApplicationInfo appInfo = context.getApplicationInfo();
         if (appInfo == null) return;
-        if ((appInfo.flags & ApplicationInfo.FLAG_HAS_CODE) != 0) {
-            codePaths.add(appInfo.sourceDir);
-        }
-        if (appInfo.splitSourceDirs != null) {
-            Collections.addAll(codePaths, appInfo.splitSourceDirs);
-        }
 
-        if (codePaths.isEmpty()) {
-            // If there are no code paths there's no need to setup a profile file and register with
-            // the runtime,
-            return;
-        }
+        if ((appInfo.flags & ApplicationInfo.FLAG_HAS_CODE) != 0) codePaths.add(appInfo.sourceDir);
+        if (appInfo.splitSourceDirs != null) Collections.addAll(codePaths, appInfo.splitSourceDirs);
+        if (codePaths.isEmpty()) return;
 
-        var profileDir = HiddenApiBridge.Environment_getDataProfilesDePackageDirectory(appInfo.uid / PER_USER_RANGE, pkgName);
-
-        var attrs = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("r--------"));
+        final var profileDir = HiddenApiBridge.Environment_getDataProfilesDePackageDirectory(appInfo.uid / PER_USER_RANGE, packageName);
+        final var attrs = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("r--------"));
 
         for (int i = codePaths.size() - 1; i >= 0; i--) {
-            String splitName = i == 0 ? null : appInfo.splitNames[i - 1];
-            File curProfileFile = new File(profileDir, splitName == null ? "primary.prof" : splitName + ".split.prof").getAbsoluteFile();
-            Log.d(TAG, "Processing " + curProfileFile.getAbsolutePath());
+            final String splitName = i == 0 ? null : appInfo.splitNames[i - 1];
+            final File curProfileFile = new File(profileDir, splitName == null ? "primary.prof" : splitName + ".split.prof").getAbsoluteFile();
+            Log.i(TAG, "Locking profile: " + curProfileFile.getAbsolutePath());
             try {
                 if (!curProfileFile.canWrite() && Files.size(curProfileFile.toPath()) == 0) {
-                    Log.d(TAG, "Skip profile " + curProfileFile.getAbsolutePath());
+                    Log.i(TAG, "Skipping locked profile: " + curProfileFile.getAbsolutePath());
                     continue;
                 }
                 if (curProfileFile.exists() && !curProfileFile.delete()) {
-                    try (var writer = new FileOutputStream(curProfileFile)) {
-                        Log.d(TAG, "Failed to delete, try to clear content " + curProfileFile.getAbsolutePath());
+                    try (var ignored = new FileOutputStream(curProfileFile)) {
+                        Log.i(TAG, "Clearing profile content: " + curProfileFile.getAbsolutePath());
                     } catch (Throwable e) {
-                        Log.e(TAG, "Failed to delete and clear profile file " + curProfileFile.getAbsolutePath(), e);
+                        Log.e(TAG, "Failed to clear profile content: " + curProfileFile.getAbsolutePath(), e);
                     }
-                    Os.chmod(curProfileFile.getAbsolutePath(), 00400);
+                    int permission = 256; // 00400
+                    Os.chmod(curProfileFile.getAbsolutePath(), permission);
                 } else {
                     Files.createFile(curProfileFile.toPath(), attrs);
                 }

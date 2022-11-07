@@ -5,11 +5,9 @@ import static org.lsposed.lspatch.share.Constants.LOADER_DEX_PATH;
 import static org.lsposed.lspatch.share.Constants.ORIGINAL_APK_ASSET_PATH;
 import static org.lsposed.lspatch.share.Constants.PROXY_APP_COMPONENT_FACTORY;
 
-import com.android.tools.build.apkzlib.sign.SigningExtension;
-import com.android.tools.build.apkzlib.sign.SigningOptions;
+import com.android.apksig.ApkSigner;
+import com.android.apksig.apk.ApkFormatException;
 import com.android.tools.build.apkzlib.zip.AlignmentRules;
-import com.android.tools.build.apkzlib.zip.NestedZip;
-import com.android.tools.build.apkzlib.zip.StoredEntry;
 import com.android.tools.build.apkzlib.zip.ZFile;
 import com.android.tools.build.apkzlib.zip.ZFileOptions;
 import com.beust.jcommander.JCommander;
@@ -43,7 +41,9 @@ import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -278,13 +278,14 @@ public final class LSPatch {
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
             internalApk.delete();
+            FileUtils.copyFile(srcApkFile, internalApk);
         } catch (IOException e) {
             throw new PatchError("Failed to create temp file", e);
         }
 
         logger.d("patching files");
         try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS);
-             var srcZFile = dstZFile.addNestedZip((ignore) -> ORIGINAL_APK_ASSET_PATH, srcApkFile, false)
+             var srcZFile = ZFile.openReadOnly(srcApkFile)
         ) {
             var manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
             try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open()))) {
@@ -304,7 +305,13 @@ public final class LSPatch {
             });
 
             try (var is = getClass().getClassLoader().getResourceAsStream(Constants.META_LOADER_DEX_PATH)) {
-                dstZFile.add("classes.dex", is);
+                String dexIndex = String.valueOf(
+                    srcZFile.entries().stream().filter(e -> {
+                        String name = e.getCentralDirectoryHeader().getName();
+                        return name.startsWith("classes") && name.endsWith(".dex");
+                    }).count() + 1
+                );
+                dstZFile.add("classes" + dexIndex + ".dex", is);
             } catch (Exception e) {
                 throw new PatchError("Failed to attach dex", e);
             }
@@ -323,28 +330,12 @@ public final class LSPatch {
                 throw new PatchError("Failed to save config", e);
             }
 
-            try {
-                registerApkSigner(dstZFile);
-            } catch (IOException | GeneralSecurityException e) {
-                throw new PatchError("Failed to register apk signer", e);
-            }
-            NestedZip nested = (NestedZip) srcZFile;
-            for (StoredEntry entry : nested.entries()) {
-                String name = entry.getCentralDirectoryHeader().getName();
-                if (name.startsWith("classes") && name.endsWith(".dex")) continue;
-                if (dstZFile.get(name) != null) continue;
-                if (name.equals("AndroidManifest.xml")) continue;
-                if (name.startsWith("META-INF") && (name.endsWith(".SF") || name.endsWith(".MF") || name.endsWith(".RSA"))) continue;
-                nested.addFileLink(name, name);
-            }
-
             logger.d("generating apk");
             dstZFile.realign();
             dstZFile.close();
             try {
-                outputFile.delete();
-                FileUtils.moveFile(internalApk, outputFile);
-            } catch (IOException e) {
+                signApk(internalApk, outputFile);
+            } catch (IOException | ApkFormatException | GeneralSecurityException e) {
                 throw new PatchError("Failed to generate apk", e);
             }
         } catch (IOException e) {
@@ -365,14 +356,8 @@ public final class LSPatch {
         logger.d("generating apk");
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
-            try (var dstZFile = ZFile.openReadWrite(internalApk)) {
-                registerApkSigner(dstZFile);
-                dstZFile.realign();
-                dstZFile.close();
-                outputFile.delete();
-                FileUtils.moveFile(internalApk, outputFile);
-            }
-        } catch (IOException | GeneralSecurityException e) {
+            signApk(internalApk, outputFile);
+        } catch (IOException | GeneralSecurityException | ApkFormatException e) {
             throw new PatchError("Failed to sign apk", e);
         } finally {
             internalApk.delete();
@@ -429,15 +414,17 @@ public final class LSPatch {
         if (signingKey == null) throw new KeyStoreException("Keystore entry not found: " + keyAlias);
     }
 
-    private void registerApkSigner(ZFile zFile) throws IOException, GeneralSecurityException {
-        new SigningExtension(SigningOptions.builder()
-            .setMinSdkVersion(28)
-            .setV1SigningEnabled(true)
-            .setV2SigningEnabled(true)
-            .setCertificates((X509Certificate[]) signingKey.getCertificateChain())
-            .setKey(signingKey.getPrivateKey())
-            .build()
-        ).register(zFile);
+    private void signApk(File srcApkFile, File outputFile) throws IOException, ApkFormatException, GeneralSecurityException {
+        List<X509Certificate> cert = Arrays.asList((X509Certificate[]) signingKey.getCertificateChain());
+        var config = new ApkSigner.SignerConfig.Builder(DEFAULT_SIGNER_NAME, signingKey.getPrivateKey(), cert).build();
+        new ApkSigner.Builder(Collections.singletonList(config))
+                     .setV1SigningEnabled(true)
+                     .setV2SigningEnabled(true)
+                     .setV3SigningEnabled(true)
+                     .setInputApk(srcApkFile)
+                     .setOutputApk(outputFile)
+                     .build()
+                     .sign();
     }
 
     private static String getDefaultKey() {
