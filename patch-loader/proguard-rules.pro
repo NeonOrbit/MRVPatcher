@@ -1,26 +1,17 @@
--keep class com.wind.xposed.entry.MMPEntry {
-    public <init>();
-    public void initAndLoadModules();
-}
+-dontoptimize
+-repackageclasses "mrv"
+-keep class org.lsposed.** { *; }
 
--keep class com.wind.xpatch.proxy.**{*;}
+-keep class hidden.** { *; }
+-keep class android.** { *; }
+-keep class androidx.** { *; }
+-keep class com.android.** { *; }
+-keep class dalvik.** { *; }
+-keep class xposed.dummy.** { *; }
+-keep class de.robv.android.xposed.** { *; }
+-keep class io.github.xposed.xposedservice.** { *; }
 
--keep class de.robv.android.xposed.**{*;}
+-keep class sun.net.www.** { *; }
+-keep class org.xmlpull.** { *; }
 
--keep class android.app.**{*;}
--keep class android.content.**{*;}
--keep class android.os.**{*;}
-
--keep class android.view.**{*;}
--keep class com.lody.whale.**{*;}
--keep class com.android.internal.**{*;}
--keep class xposed.dummy.**{*;}
--keep class com.wind.xposed.entry.util.**{*;}
-
--keep class com.swift.sandhook.**{*;}
--keep class com.swift.sandhook.xposedcompat.**{*;}
-
--dontwarn android.content.res.Resources
--dontwarn android.content.res.Resources$Theme
--dontwarn android.content.res.AssetManager
--dontwarn android.content.res.TypedArray
+-dontwarn org.slf4j.impl.**

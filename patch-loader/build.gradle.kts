@@ -14,8 +14,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            isMinifyEnabled = true
+            proguardFiles("proguard-rules.pro")
         }
     }
 
@@ -31,7 +31,11 @@ androidComponents.onVariants { variant ->
 
     task<Copy>("copyDex$variantCapped") {
         dependsOn("assemble$variantCapped")
-        from("$buildDir/intermediates/dex/${variant.name}/mergeDex$variantCapped/classes.dex")
+        from(if (variant.buildType == "release") {
+            "$buildDir/intermediates/dex/${variant.name}/minify${variantCapped}WithR8"
+        } else {
+            "$buildDir/intermediates/dex/${variant.name}/mergeDex$variantCapped"
+        })
         rename("classes.dex", "loader")
         into("${rootProject.projectDir}/out/assets/mrvdata")
     }
