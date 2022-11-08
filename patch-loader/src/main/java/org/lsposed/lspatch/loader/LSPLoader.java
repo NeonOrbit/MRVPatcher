@@ -5,6 +5,7 @@ import android.app.LoadedApk;
 import android.content.Context;
 
 import org.lsposed.lspatch.loader.hook.AppSignatureHook;
+import org.lsposed.lspatch.loader.hook.AppSpecifiedHook;
 import org.lsposed.lspd.core.ApplicationServiceClient;
 import org.lsposed.lspd.core.Startup;
 import org.lsposed.lspd.deopt.PrebuiltMethodsDeopter;
@@ -36,6 +37,7 @@ public class LSPLoader {
 
     public static void startInnerHook(Context context) {
         new AppSignatureHook().load(context);
+        new AppSpecifiedHook().load(context);
     }
 
     public static void initModules(LoadedApk loadedApk) {

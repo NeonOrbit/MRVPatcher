@@ -1,8 +1,14 @@
 package org.lsposed.lspatch.loader;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
+import android.graphics.drawable.Icon;
+import android.net.Uri;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
@@ -22,6 +28,8 @@ public class ModuleManager {
     private static final String MODULE_PACKAGE = "app.neonorbit.chatheadenabler";
 
     public static final List<Module> MODULES = new ArrayList<>(1);
+    public static final String MODULE_SHORTCUT_ID = "mrv-module-shortcut";
+    public static final List<ShortcutInfo> MODULE_SHORTCUT_INFO = new ArrayList<>(1);
 
     public static boolean hasModule = false;
     public static boolean isInitialized = false;
@@ -30,6 +38,7 @@ public class ModuleManager {
         if (ModuleManager.isInitialized) return;
         if (isValid(context) && loadModules(context)) {
             ModuleManager.hasModule = true;
+            setupModuleShortcut(context);
         }
         ModuleManager.isInitialized = true;
     }
@@ -79,5 +88,24 @@ public class ModuleManager {
         }
         Log.i(TAG, "Installed module path: " + apkPath);
         return apkPath;
+    }
+
+    private static void setupModuleShortcut(Context context) {
+        try {
+            MODULE_SHORTCUT_INFO.clear();
+            var uri = Uri.fromParts("package", MODULE_PACKAGE, null);
+            var intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, uri);
+            var shortcutIcon = Icon.createWithResource(context, android.R.drawable.ic_menu_sort_by_size);
+            var shortcutInfo = new ShortcutInfo.Builder(context, MODULE_SHORTCUT_ID)
+                .setShortLabel(MODULE_NAME)
+                .setLongLabel(MODULE_NAME)
+                .setIcon(shortcutIcon)
+                .setIntent(intent)
+                .build();
+            MODULE_SHORTCUT_INFO.add(shortcutInfo);
+            context.getSystemService(ShortcutManager.class).addDynamicShortcuts(MODULE_SHORTCUT_INFO);
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed to setup module shortcut: " + t.getMessage());
+        }
     }
 }
