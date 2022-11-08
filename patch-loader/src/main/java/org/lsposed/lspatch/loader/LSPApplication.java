@@ -1,6 +1,8 @@
 package org.lsposed.lspatch.loader;
 
 import static org.lsposed.lspatch.share.Constants.CONFIG_ASSET_PATH;
+import static org.lsposed.lspatch.share.Constants.MRV_DATA_DIR;
+import static org.lsposed.lspatch.share.Constants.ORIGINAL_APK_ASSET_PATH;
 
 import android.app.ActivityThread;
 import android.app.LoadedApk;
@@ -13,6 +15,7 @@ import android.util.Log;
 
 import com.google.gson.Gson;
 
+import org.lsposed.lspatch.loader.util.FileUtils;
 import org.lsposed.lspatch.share.Constants;
 import org.lsposed.lspatch.share.PatchConfig;
 
@@ -20,15 +23,18 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Map;
 import java.util.function.BiConsumer;
+import java.util.zip.ZipFile;
 
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.XposedInit;
@@ -95,6 +101,10 @@ public class LSPApplication {
                 Log.e(TAG, "Failed to load config file");
                 return null;
             }
+            if (LSPApplication.config.fallback) {
+                Log.i(TAG, "Applying fallback mode...");
+                updateSourceApk(appInfo, baseClassLoader);
+            }
             appInfo.appComponentFactory = LSPApplication.config.component;
             updateLoadedApk(appInfo, loadedApk, mBoundApplication);
             Log.i(TAG, "ClassLoader initialized: " + appLoadedApk.getClassLoader());
@@ -138,6 +148,27 @@ public class LSPApplication {
                 );
             }
         }
+    }
+
+    private static void updateSourceApk(ApplicationInfo appInfo, ClassLoader classLoader) throws Exception {
+        String originApkPath;
+        String mrvDataDirPath = appInfo.dataDir + "/" + MRV_DATA_DIR;
+        try (ZipFile sourceFile = new ZipFile(appInfo.sourceDir)) {
+            originApkPath = mrvDataDirPath + "/" + sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH).getCrc();
+        }
+        if (!Files.exists(Paths.get(originApkPath))) {
+            Log.i(TAG, "Setting up base package");
+            int permission = 509;  // 00775
+            FileUtils.deleteFolderIfExists(Paths.get(mrvDataDirPath));
+            Files.createDirectories(Paths.get(mrvDataDirPath));
+            Os.chmod(mrvDataDirPath, permission);
+            try (InputStream is = classLoader.getResourceAsStream(ORIGINAL_APK_ASSET_PATH)) {
+                Files.copy(is, Paths.get(originApkPath));
+            }
+            Os.chmod(originApkPath, permission);
+        }
+        appInfo.sourceDir = originApkPath;
+        appInfo.publicSourceDir = originApkPath;
     }
 
     private static void lockProfile(Context context) {

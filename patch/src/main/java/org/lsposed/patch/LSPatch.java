@@ -7,7 +7,11 @@ import static org.lsposed.lspatch.share.Constants.PROXY_APP_COMPONENT_FACTORY;
 
 import com.android.apksig.ApkSigner;
 import com.android.apksig.apk.ApkFormatException;
+import com.android.tools.build.apkzlib.sign.SigningExtension;
+import com.android.tools.build.apkzlib.sign.SigningOptions;
 import com.android.tools.build.apkzlib.zip.AlignmentRules;
+import com.android.tools.build.apkzlib.zip.NestedZip;
+import com.android.tools.build.apkzlib.zip.StoredEntry;
 import com.android.tools.build.apkzlib.zip.ZFile;
 import com.android.tools.build.apkzlib.zip.ZFileOptions;
 import com.beust.jcommander.JCommander;
@@ -83,11 +87,14 @@ public final class LSPatch {
     @Parameter(names = {"-p", "--patch"}, order = 5, help = true, description = "Patch forcibly. Enable patch for all fb apps.")
     private boolean patchForcibly = false;
 
-    @Parameter(names = {"--out-file"}, hidden = true, description = "[Internal Option] absolute path for output")
-    private String internalOutputPath;
+    @Parameter(names = {"--fallback"}, order = 6, help = true, description = "Use fallback mode (slow). [In case default patched apps doesn't work]")
+    private boolean fallbackMode = false;
 
-    @Parameter(names = {"--temp-dir"}, hidden = true, description = "[Internal Option] temp directory path")
-    private String internalTempDir;
+    @Parameter(names = {"--out-file"}, order = 7, hidden = true, description = "[Internal Option] absolute path for output")
+    private String internalOutputPath = null;
+
+    @Parameter(names = {"--temp-dir"}, order = 8, hidden = true, description = "[Internal Option] temp directory path")
+    private String internalTempDir = null;
 
     private boolean isExtraApp = false;
 
@@ -278,14 +285,18 @@ public final class LSPatch {
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
             internalApk.delete();
-            FileUtils.copyFile(srcApkFile, internalApk);
+            if (!fallbackMode) {
+                FileUtils.copyFile(srcApkFile, internalApk);
+            }
         } catch (IOException e) {
             throw new PatchError("Failed to create temp file", e);
         }
 
         logger.d("patching files");
         try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS);
-             var srcZFile = ZFile.openReadOnly(srcApkFile)
+             var srcZFile = (!fallbackMode ? ZFile.openReadOnly(srcApkFile) :
+                 dstZFile.addNestedZip((ignore) -> ORIGINAL_APK_ASSET_PATH, srcApkFile, false)
+             )
         ) {
             var manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
             try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open()))) {
@@ -305,7 +316,7 @@ public final class LSPatch {
             });
 
             try (var is = getClass().getClassLoader().getResourceAsStream(Constants.META_LOADER_DEX_PATH)) {
-                String dexIndex = String.valueOf(
+                String dexIndex = fallbackMode ? "" : String.valueOf(
                     srcZFile.entries().stream().filter(e -> {
                         String name = e.getCentralDirectoryHeader().getName();
                         return name.startsWith("classes") && name.endsWith(".dex");
@@ -322,7 +333,7 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach assets", e);
             }
 
-            var config = new PatchConfig(appComponentFactory);
+            var config = new PatchConfig(fallbackMode, appComponentFactory);
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
@@ -330,11 +341,33 @@ public final class LSPatch {
                 throw new PatchError("Failed to save config", e);
             }
 
+            if (fallbackMode) {
+                try {
+                    registerApkSigner(dstZFile);
+                } catch (IOException | GeneralSecurityException e) {
+                    throw new PatchError("Failed to register apk signer", e);
+                }
+                NestedZip nested = (NestedZip) srcZFile;
+                for (StoredEntry entry : nested.entries()) {
+                    String name = entry.getCentralDirectoryHeader().getName();
+                    if (name.startsWith("classes") && name.endsWith(".dex")) continue;
+                    if (dstZFile.get(name) != null) continue;
+                    if (name.equals("AndroidManifest.xml")) continue;
+                    if (name.startsWith("META-INF") && (name.endsWith(".SF") || name.endsWith(".MF") || name.endsWith(".RSA"))) continue;
+                    nested.addFileLink(name, name);
+                }
+            }
+
             logger.d("generating apk");
             dstZFile.realign();
             dstZFile.close();
             try {
-                signApk(internalApk, outputFile);
+                if (fallbackMode) {
+                    outputFile.delete();
+                    FileUtils.moveFile(internalApk, outputFile);
+                } else {
+                    signApk(internalApk, outputFile);
+                }
             } catch (IOException | ApkFormatException | GeneralSecurityException e) {
                 throw new PatchError("Failed to generate apk", e);
             }
@@ -356,7 +389,17 @@ public final class LSPatch {
         logger.d("generating apk");
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
-            signApk(internalApk, outputFile);
+            if (!fallbackMode) {
+                signApk(internalApk, outputFile);
+            } else {
+                try (var dstZFile = ZFile.openReadWrite(internalApk)) {
+                    registerApkSigner(dstZFile);
+                    dstZFile.realign();
+                    dstZFile.close();
+                    outputFile.delete();
+                    FileUtils.moveFile(internalApk, outputFile);
+                }
+            }
         } catch (IOException | GeneralSecurityException | ApkFormatException e) {
             throw new PatchError("Failed to sign apk", e);
         } finally {
@@ -425,6 +468,17 @@ public final class LSPatch {
                      .setOutputApk(outputFile)
                      .build()
                      .sign();
+    }
+
+    private void registerApkSigner(ZFile zFile) throws IOException, GeneralSecurityException {
+        new SigningExtension(SigningOptions.builder()
+            .setMinSdkVersion(28)
+            .setV1SigningEnabled(true)
+            .setV2SigningEnabled(true)
+            .setCertificates((X509Certificate[]) signingKey.getCertificateChain())
+            .setKey(signingKey.getPrivateKey())
+            .build()
+        ).register(zFile);
     }
 
     private static String getDefaultKey() {
