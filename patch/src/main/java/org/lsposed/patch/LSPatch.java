@@ -52,6 +52,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CancellationException;
 
 @SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal", "ResultOfMethodCallIgnored"})
 public final class LSPatch {
@@ -150,12 +151,16 @@ public final class LSPatch {
             LSPatch lsPatch = new LSPatch(args);
             lsPatch.help |= args.length == 0;
             lsPatch.doCommandLine();
-        } catch (Throwable throwable) {
-            logger.e(getError(throwable));
+        } catch (Throwable t) {
+            if (t instanceof CancellationException) {
+                throw ((CancellationException) t);
+            } else {
+                logger.e(getError(t));
+            }
         }
     }
 
-    public void doCommandLine() {
+    public void doCommandLine() throws Exception {
         if (help) {
             jCommander.usage();
             return;
@@ -165,17 +170,14 @@ public final class LSPatch {
             jCommander.usage();
             return;
         }
-        try {
-            setupSigningKey();
-        } catch (Exception exception) {
-            logger.e(getError(exception));
-            return;
-        }
+        setupSigningKey();
+
         final boolean multiple = apkPaths.size() > 1;
         if (multiple && internalOutputPath != null) {
             throw new AssertionError();
         }
         final Map<String, String> results = new HashMap<>();
+
         for (var apk : apkPaths) {
             logger.v("\nSource: " + apk);
             results.put(apk, "[failed!] " + apk);
@@ -201,14 +203,13 @@ public final class LSPatch {
             try (var zFile = ZFile.openReadOnly(srcApkFile)) {
                 var manifestEntry = zFile.get(ANDROID_MANIFEST_XML);
                 if (manifestEntry == null) {
-                    logger.e("'" + srcFileName + "' is not a valid apk file");
+                    logger.e("Input file is not a valid apk file");
                     if (multiple) logger.v("Skipping...");
                     continue;
                 }
                 try (var is = manifestEntry.open()) {
                     var pair = ManifestParser.parseManifestFile(is);
-                    if (pair == null || pair.appComponentFactory == null || pair.packageName == null ||
-                        pair.appComponentFactory.isEmpty() || pair.packageName.isEmpty()) {
+                    if (pair == null || pair.packageName == null || pair.packageName.isEmpty()) {
                         logger.e("Failed to parse Manifest");
                         if (multiple) logger.v("Skipping...");
                         continue;
@@ -224,18 +225,25 @@ public final class LSPatch {
             isExtraApp = !ConstantsM.DEFAULT_FB_PACKAGES.contains(packageName);
 
             if (!packageName.startsWith(ConstantsM.VALID_FB_PACKAGE_PREFIX)) {
-                logger.e("'" + packageName + "' is not a facebook app");
-                if (multiple) logger.v("Skipping...");
-                continue;
-            }
-
-            if (appComponentFactory.equals(PROXY_APP_COMPONENT_FACTORY)) {
-                logger.e(srcFileName + " file is already patched");
+                logger.e("Input file is not a valid facebook app");
                 if (multiple) logger.v("Skipping...");
                 continue;
             }
 
             final boolean signOnly = !patchForcibly && !DEFAULT_PATCHABLE_PACKAGE.contains(packageName);
+
+            if (!signOnly) {
+                if (appComponentFactory == null || appComponentFactory.isEmpty()) {
+                    logger.e("Missing required app component");
+                    if (multiple) logger.v("Skipping...");
+                    continue;
+                }
+                if (appComponentFactory.equals(PROXY_APP_COMPONENT_FACTORY)) {
+                    logger.e("Input file was previously patched");
+                    if (multiple) logger.v("Skipping...");
+                    continue;
+                }
+            }
 
             final File outputFile = (internalOutputPath != null ?
                 new File(internalOutputPath) :
@@ -281,6 +289,7 @@ public final class LSPatch {
     }
 
     public void patch(File srcApkFile, File outputFile, String appComponentFactory) throws PatchError {
+        logger.d("patching files");
         final File internalApk;
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
@@ -292,7 +301,6 @@ public final class LSPatch {
             throw new PatchError("Failed to create temp file", e);
         }
 
-        logger.d("patching files");
         try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS);
              var srcZFile = (!fallbackMode ? ZFile.openReadOnly(srcApkFile) :
                  dstZFile.addNestedZip((ignore) -> ORIGINAL_APK_ASSET_PATH, srcApkFile, false)
@@ -301,7 +309,7 @@ public final class LSPatch {
             var manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
             try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open()))) {
                 dstZFile.add(ANDROID_MANIFEST_XML, is);
-            } catch (Exception e) {
+            } catch (IOException e) {
                 throw new PatchError("Failed to attach manifest", e);
             }
 
@@ -310,7 +318,7 @@ public final class LSPatch {
                 String entry = Constants.getLibrarySoPath(arch);
                 try (var is = getClass().getClassLoader().getResourceAsStream(asset)) {
                     dstZFile.add(entry, is, false);
-                } catch (Exception e) {
+                } catch (IOException e) {
                     throw new PatchError("Failed to attach native libs", e);
                 }
             });
@@ -323,13 +331,13 @@ public final class LSPatch {
                     }).count() + 1
                 );
                 dstZFile.add("classes" + dexIndex + ".dex", is);
-            } catch (Exception e) {
+            } catch (IOException e) {
                 throw new PatchError("Failed to attach dex", e);
             }
 
             try (var is = getClass().getClassLoader().getResourceAsStream(LOADER_DEX_PATH)) {
                 dstZFile.add(LOADER_DEX_PATH, is);
-            } catch (Exception e) {
+            } catch (IOException e) {
                 throw new PatchError("Failed to attach assets", e);
             }
 
@@ -337,7 +345,7 @@ public final class LSPatch {
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
-            } catch (Exception e) {
+            } catch (IOException e) {
                 throw new PatchError("Failed to save config", e);
             }
 
@@ -379,6 +387,7 @@ public final class LSPatch {
     }
 
     public void sign(File srcApkFile, File outputFile) throws PatchError {
+        logger.d("signing apk");
         File internalApk;
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
@@ -386,7 +395,6 @@ public final class LSPatch {
         } catch (IOException e) {
             throw new PatchError("Failed to create temp file", e);
         }
-        logger.d("generating apk");
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
             if (!fallbackMode) {
