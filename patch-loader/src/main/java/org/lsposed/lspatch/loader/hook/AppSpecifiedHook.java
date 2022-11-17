@@ -4,11 +4,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
-import android.content.pm.ShortcutManager;
-import android.util.Log;
-
-import org.lsposed.lspatch.loader.LSPApplication;
-import org.lsposed.lspatch.loader.ModuleManager;
 
 import java.util.Set;
 
@@ -25,23 +20,7 @@ public class AppSpecifiedHook implements AppInnerHook {
 
     @Override
     public void load(Context context) {
-        hookModuleShortcut(context);
         DeepLinkingHotPatch(context);
-    }
-
-    private void hookModuleShortcut(Context context) {
-        if (ModuleManager.hasModule) {
-            XposedHelpers.findAndHookMethod(ShortcutManager.class, "removeAllDynamicShortcuts", new XC_MethodHook() {
-                @Override
-                protected void afterHookedMethod(MethodHookParam param) {
-                    try {
-                        context.getSystemService(ShortcutManager.class).addDynamicShortcuts(ModuleManager.MODULE_SHORTCUT_INFO);
-                    } catch (Throwable t) {
-                        Log.w(LSPApplication.TAG, "Failed to re-apply module shortcut: " + t.getMessage());
-                    }
-                }
-            });
-        }
     }
 
     private void DeepLinkingHotPatch(Context context) {
