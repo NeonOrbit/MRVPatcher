@@ -15,3 +15,4 @@
 -keep class org.xmlpull.** { *; }
 
 -dontwarn org.slf4j.impl.**
+-dontwarn androidx.annotation.**
