@@ -1,6 +1,6 @@
 # MRVPatcher
 
-MRVPatcher is a patching tool for using [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) on non-rooted devices.
+MRVPatcher is a patching tool to use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) on non-rooted devices.
 
 Android version of the patcher: [MRVPatch Manager](https://github.com/NeonOrbit/MRVPatchManager)
 
