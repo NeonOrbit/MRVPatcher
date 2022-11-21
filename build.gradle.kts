@@ -4,7 +4,7 @@ import com.android.build.gradle.BaseExtension
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.internal.storage.file.FileRepository
 
-val jarVersion by extra("5.5.1")
+val jarVersion by extra("5.5.2")
 
 plugins {
     id("com.android.application") apply false
