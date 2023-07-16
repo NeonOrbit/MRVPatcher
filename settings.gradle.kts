@@ -26,7 +26,6 @@ dependencyResolutionManagement {
 rootProject.name = "MRVPatcher"
 include(
     ":apkzlib",
-    ":axmlprinter",
     ":core",
     ":hiddenapi:bridge",
     ":hiddenapi:stubs",
