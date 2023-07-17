@@ -47,19 +47,18 @@ public class ProxySignatureInfo implements Parcelable.Creator<PackageInfo> {
     public void replaceSignature(PackageInfo packageInfo) {
         String replacement;
         String pkg = packageInfo.packageName;
-        if (!pkg.startsWith(ConstantsM.VALID_FB_PACKAGE_PREFIX) ||
-            (replacement = findReplacement(packageInfo)) == null) {
+        if (ConstantsM.isInvalidPackage(pkg) || (replacement = findReplacement(packageInfo)) == null) {
             return;
         }
         if (packageInfo.signatures != null && packageInfo.signatures.length > 0) {
             packageInfo.signatures[0] = new Signature(replacement);
-            Log.i(LSPApplication.TAG, "Signature[" + requester + "] request for: " + pkg);
+            Log.i(LSPApplication.TAG, "Signature[" + pkg + "] request from: " + requester);
         }
         if (packageInfo.signingInfo != null) {
             Signature[] signaturesArray = packageInfo.signingInfo.getApkContentsSigners();
             if (signaturesArray != null && signaturesArray.length > 0) {
                 signaturesArray[0] = new Signature(replacement);
-                Log.i(LSPApplication.TAG, "SigningInfo[" + requester + "] request for: " + pkg);
+                Log.i(LSPApplication.TAG, "SigningInfo[" + pkg + "] request from: " + requester);
             }
         }
     }
@@ -82,12 +81,13 @@ public class ProxySignatureInfo implements Parcelable.Creator<PackageInfo> {
 
     private String extractSignature(String packageName) {
         try {
-            Log.i(LSPApplication.TAG, "Extracting signature: " + packageName);
             var metaData = context.getPackageManager().getApplicationInfo(
                 packageName, PackageManager.GET_META_DATA
             ).metaData;
-            String encoded = metaData != null ? metaData.getString(ExtraConfig.KEY) : null;
+            if (metaData == null) return null;
+            String encoded = metaData.getString(ExtraConfig.KEY);
             if (encoded != null) {
+                Log.i(LSPApplication.TAG, "Extracting signature from: " + packageName);
                 var decoded = Base64.decode(encoded, Base64.DEFAULT);
                 var json = new String(decoded, StandardCharsets.UTF_8);
                 return new Gson().fromJson(json, ExtraConfig.class).signature;

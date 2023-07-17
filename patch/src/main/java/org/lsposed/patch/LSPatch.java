@@ -104,6 +104,10 @@ public final class LSPatch {
         "com.facebook.katana"
     );
 
+    private static boolean shouldPatch(String packageName) {
+        return DEFAULT_PATCHABLE_PACKAGE.contains(packageName) || !packageName.startsWith(ConstantsM.VALID_FB_PACKAGE_PREFIX);
+    }
+
     private static final String ANDROID_MANIFEST_XML = "AndroidManifest.xml";
 
     private static final Map<String, String> ARCH_LIBRARY_MAP = ImmutableMap.of(
@@ -224,13 +228,13 @@ public final class LSPatch {
             }
             isExtraApp = !ConstantsM.DEFAULT_FB_PACKAGES.contains(packageName);
 
-            if (!packageName.startsWith(ConstantsM.VALID_FB_PACKAGE_PREFIX)) {
+            if (ConstantsM.isInvalidPackage(packageName)) {
                 logger.e("Input file is not a valid facebook app");
                 if (multiple) logger.v("Skipping...");
                 continue;
             }
 
-            final boolean signOnly = !patchForcibly && !DEFAULT_PATCHABLE_PACKAGE.contains(packageName);
+            final boolean signOnly = !(patchForcibly || shouldPatch(packageName));
 
             if (!signOnly) {
                 if (appComponentFactory == null || appComponentFactory.isEmpty()) {
