@@ -10,74 +10,102 @@ import android.widget.Toast;
 import org.lsposed.lspatch.util.ModuleLoader;
 import org.lsposed.lspd.models.Module;
 
-import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 public class ModuleManager {
     private static final String TAG = LSPApplication.TAG;
     private static final String TARGET_PACKAGE = "com.facebook.orca";
 
-    private static final long MODULE_MIN = 240;
-    private static final String MODULE_NAME = "ChatHeadEnabler";
-    private static final String MODULE_PACKAGE = "app.neonorbit.chatheadenabler";
+    private static final long DEF_MODULE_MIN = 240;
+    private static final String DEF_MODULE_NAME = "ChatHeadEnabler";
+    private static final String DEF_MODULE_PACKAGE = "app.neonorbit.chatheadenabler";
 
-    public static final List<Module> MODULES = new ArrayList<>(1);
+    private static final HashMap<String, Module> MODULES = new LinkedHashMap<>(2);
+    public static List<Module> getPreloadedModules() {
+        return List.copyOf(MODULES.values());
+    }
 
-    public static boolean hasModule = false;
+    public static boolean moduleLoaded = false;
     public static boolean isInitialized = false;
 
     public static void init(Context context) {
         if (ModuleManager.isInitialized) return;
         if (isValid(context) && loadModules(context)) {
-            ModuleManager.hasModule = true;
+            ModuleManager.moduleLoaded = true;
         }
         ModuleManager.isInitialized = true;
     }
 
     private static boolean isValid(Context context) {
-        return context.getPackageName().equals(TARGET_PACKAGE);
+        return LSPApplication.config.targetAll() || context.getPackageName().equals(TARGET_PACKAGE);
     }
 
     private static boolean loadModules(Context context) {
-        String modulePath = getModulePath(context);
-        if (modulePath.isEmpty()) {
-            Log.w(TAG, "Couldn't detect " + MODULE_NAME + " module");
-            Toast.makeText(context, "Please install " + MODULE_NAME, Toast.LENGTH_LONG).show();
-            return false;
-        }
-        var file = ModuleLoader.loadModule(modulePath);
-        if (file != null) {
-            var module = new Module();
-            module.apkPath = modulePath;
-            module.packageName = MODULE_PACKAGE;
-            module.file = file;
-            MODULES.add(module);
-            return true;
-        }
-        Log.w(TAG, "Failed to preload module apk");
-        Toast.makeText(context, "Failed to load " + MODULE_NAME, Toast.LENGTH_LONG).show();
-        return false;
+        loadDefaultModule(context);
+        loadExtraModules(context);
+        return !MODULES.isEmpty();
     }
 
-    private static String getModulePath(Context context) {
+    private static void loadDefaultModule(Context context) {
+        boolean defOnly = !LSPApplication.config.hasExtraModules();
+        String path = getModulePath(context, DEF_MODULE_PACKAGE);
+        if (path.isEmpty() && defOnly) {
+            Toast.makeText(context, "Please install " + DEF_MODULE_NAME, Toast.LENGTH_LONG).show();
+            return;
+        }
+        loadModuleApk(DEF_MODULE_PACKAGE, path);
+        if (defOnly && MODULES.isEmpty()) {
+            Toast.makeText(context, "Failed to load " + DEF_MODULE_NAME, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private static void loadExtraModules(Context context) {
+        if (LSPApplication.config.hasExtraModules()) {
+            for (String pkg : LSPApplication.config.exModules) {
+                loadModuleApk(pkg, getModulePath(context, pkg));
+            }
+        }
+    }
+
+    private static void loadModuleApk(String pkg, String path) {
+        if (pkg.isEmpty() || path.isEmpty() || MODULES.containsKey(pkg)) return;
+        var file = ModuleLoader.loadModule(path);
+        if (file != null) {
+            var module = new Module();
+            module.apkPath = path;
+            module.packageName = pkg;
+            module.file = file;
+            MODULES.putIfAbsent(pkg, module);
+        } else {
+            Log.w(TAG, "Failed to preload module apk: " + pkg);
+        }
+    }
+
+    private static String getModulePath(Context context, String pkg) {
         PackageManager pm = context.getPackageManager();
         PackageInfo packageInfo = null;
         try {
-            packageInfo = pm.getPackageInfo(MODULE_PACKAGE, 0);
-        } catch (Throwable t) {
-            Log.w(TAG, "Couldn't get packageInfo: " + t.getMessage());
-        }
+            packageInfo = pm.getPackageInfo(pkg, 0);
+        } catch (PackageManager.NameNotFoundException ignore) { }
         if (packageInfo == null || !packageInfo.applicationInfo.enabled) {
+            Log.w(TAG, "Module not found: " + pkg);
             return "";
-        } else if (packageInfo.getLongVersionCode() < MODULE_MIN) {
-            Log.w(TAG, MODULE_NAME + " is outdated: " + packageInfo.getLongVersionCode());
-            Toast.makeText(context, "Please update " + MODULE_NAME, Toast.LENGTH_LONG).show();
         }
+        checkMinVersionIfDefault(context, packageInfo, pkg);
         String apkPath = packageInfo.applicationInfo.publicSourceDir;
         if (TextUtils.isEmpty(apkPath)) {
             apkPath = packageInfo.applicationInfo.sourceDir;
         }
-        Log.i(TAG, "Installed module path: " + apkPath);
+        Log.i(TAG, "Module found [" + pkg + "]: " + apkPath);
         return apkPath;
+    }
+
+    private static void checkMinVersionIfDefault(Context context, PackageInfo pInfo, String pkg) {
+        if (pkg.equals(DEF_MODULE_PACKAGE) && pInfo.getLongVersionCode() < DEF_MODULE_MIN) {
+            Log.w(TAG, DEF_MODULE_NAME + " is outdated: " + pInfo.getLongVersionCode());
+            Toast.makeText(context, "Please update " + DEF_MODULE_NAME, Toast.LENGTH_LONG).show();
+        }
     }
 }

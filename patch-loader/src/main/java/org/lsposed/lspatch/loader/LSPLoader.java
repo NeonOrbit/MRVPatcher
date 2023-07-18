@@ -23,7 +23,7 @@ public class LSPLoader {
         var process = ActivityThread.currentProcessName();
         try {
             Method init = ApplicationServiceClient.class.getDeclaredMethod(
-                "Init", ILSPApplicationService.class, String.class
+                    "Init", ILSPApplicationService.class, String.class
             );
             init.setAccessible(true);
             init.invoke(null, service, process);

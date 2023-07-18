@@ -22,12 +22,12 @@ import org.lsposed.lspatch.share.PatchConfig;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
@@ -47,7 +47,7 @@ import hidden.HiddenApiBridge;
 public class LSPApplication {
     public static final String TAG = Constants.TAG;
 
-    private static PatchConfig config;
+    public static PatchConfig config;
     private static LoadedApk appLoadedApk;
     private static ActivityThread activityThread;
 
@@ -77,7 +77,7 @@ public class LSPApplication {
             LSPLoader.init(appContext);
             ModuleManager.init(appContext);
             LSPLoader.startInnerHook(appContext);
-            if (ModuleManager.hasModule) {
+            if (ModuleManager.moduleLoaded) {
                 XposedInit.loadModules();
                 LSPLoader.initModules(appLoadedApk);
                 Log.i(TAG, "Modules initialized");
@@ -97,7 +97,7 @@ public class LSPApplication {
             try (var is = baseClassLoader.getResourceAsStream(CONFIG_ASSET_PATH)) {
                 BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
                 LSPApplication.config = new Gson().fromJson(reader, PatchConfig.class);
-            } catch (IOException e) {
+            } catch (Exception e) {
                 Log.e(TAG, "Failed to load config file");
                 return null;
             }
@@ -156,16 +156,17 @@ public class LSPApplication {
         try (ZipFile sourceFile = new ZipFile(appInfo.sourceDir)) {
             originApkPath = mrvDataDirPath + "/" + sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH).getCrc();
         }
-        if (!Files.exists(Paths.get(originApkPath))) {
+        Path orgApk = Paths.get(originApkPath);
+        if (!Files.exists(orgApk)) {
             Log.i(TAG, "Setting up base package");
-            int permission = 509;  // 00775
-            FileUtils.deleteFolderIfExists(Paths.get(mrvDataDirPath));
-            Files.createDirectories(Paths.get(mrvDataDirPath));
-            Os.chmod(mrvDataDirPath, permission);
+            Path mrvDir = Paths.get(mrvDataDirPath);
+            FileUtils.deleteFolderIfExists(mrvDir);
+            Files.createDirectories(mrvDir);
+            Os.chmod(mrvDataDirPath, 509);  // 00775
             try (InputStream is = classLoader.getResourceAsStream(ORIGINAL_APK_ASSET_PATH)) {
-                Files.copy(is, Paths.get(originApkPath));
+                Files.copy(is, orgApk);
             }
-            Os.chmod(originApkPath, permission);
+            Os.chmod(originApkPath, 365);  // 00555
         }
         appInfo.sourceDir = originApkPath;
         appInfo.publicSourceDir = originApkPath;

@@ -21,7 +21,7 @@ public class LSPAppService extends ILSPApplicationService.Stub {
 
     @Override
     public List<Module> getModulesList() {
-        return ModuleManager.MODULES;
+        return ModuleManager.getPreloadedModules();
     }
 
     @Override

@@ -1,7 +1,7 @@
 package org.lsposed.lspatch.share;
 
 public class Constants {
-    public static final String TAG = "MRVPatch";
+    public static final String TAG = "MRVPatcher";
 
     public static final String MRV_DATA_DIR = "mrvdata";
     public static final String LSP_LIB_NAME = "liblspatch";

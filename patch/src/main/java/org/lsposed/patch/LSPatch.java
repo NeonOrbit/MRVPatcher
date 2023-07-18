@@ -85,19 +85,30 @@ public final class LSPatch {
     @Parameter(names = {"-ksp", "--ks-prompt"}, order = 4, help = true, description = "Prompt for keystore alias details")
     private boolean userKeyPrompt = false;
 
-    @Parameter(names = {"-p", "--patch"}, order = 5, help = true, description = "Patch forcibly. Enable patch for all fb apps.")
+    @Parameter(names = {"-p", "--patch"}, order = 5, help = true, description = "Forcefully patch apps that do not require patching")
     private boolean patchForcibly = false;
 
-    @Parameter(names = {"--fallback"}, order = 6, help = true, description = "Use fallback mode (slow). [In case default patched apps doesn't work]")
+    @Parameter(names = {"--sign-only"}, order = 6, help = true, description = "Skip patching (apk signing only)")
+    private boolean signForcibly = false;
+
+    @Parameter(names = {"--fallback"}, order = 7, help = true, description = "Use fallback mode (slow) [In case default patched apps fail]")
     private boolean fallbackMode = false;
 
-    @Parameter(names = {"--out-file"}, order = 7, hidden = true, description = "[Internal Option] absolute path for output")
+    @Parameter(names = {"--modules"}, order = 8, variableArity = true, help = true, description = "Allow third-party modules [package names]")
+    private List<String> modules = new ArrayList<>();
+
+    // @Parameter(names = {"--res-hook"}, order = 9, help = true, description = "Enable resource hook (disabled by default) [unnecessary]")
+
+    @Parameter(names = {"--load-on-all"}, order = 10, help = true, description = "Load modules for all patched apps, not just Messenger. [unnecessary]")
+    private boolean loadOnAll = false;
+
+    @Parameter(names = {"--out-file"}, hidden = true, description = "[Internal Option] absolute path for output")
     private String internalOutputPath = null;
 
-    @Parameter(names = {"--temp-dir"}, order = 8, hidden = true, description = "[Internal Option] temp directory path")
+    @Parameter(names = {"--temp-dir"}, hidden = true, description = "[Internal Option] temp directory path")
     private String internalTempDir = null;
 
-    private boolean isExtraApp = false;
+    private boolean embedSignature = false;
 
     private static final List<String> DEFAULT_PATCHABLE_PACKAGE = ImmutableList.of(
         "com.facebook.orca",
@@ -105,7 +116,9 @@ public final class LSPatch {
     );
 
     private static boolean shouldPatch(String packageName) {
-        return DEFAULT_PATCHABLE_PACKAGE.contains(packageName) || !packageName.startsWith(ConstantsM.VALID_FB_PACKAGE_PREFIX);
+        return DEFAULT_PATCHABLE_PACKAGE.contains(packageName) || !(
+                packageName.startsWith(ConstantsM.VALID_FB_PACKAGE_PREFIX) || packageName.endsWith("lite")
+        );
     }
 
     private static final String ANDROID_MANIFEST_XML = "AndroidManifest.xml";
@@ -174,6 +187,10 @@ public final class LSPatch {
             jCommander.usage();
             return;
         }
+        if (patchForcibly && signForcibly) {
+            logger.e(" --patch and --sign-only options can not be used together");
+            return;
+        }
         setupSigningKey();
 
         final boolean multiple = apkPaths.size() > 1;
@@ -202,6 +219,7 @@ public final class LSPatch {
             logger.v("\nProgress:");
             logger.d("parsing manifest");
 
+            int minSdkVersion;
             String packageName;
             String appComponentFactory;
             try (var zFile = ZFile.openReadOnly(srcApkFile)) {
@@ -218,6 +236,7 @@ public final class LSPatch {
                         if (multiple) logger.v("Skipping...");
                         continue;
                     }
+                    minSdkVersion = pair.minSdkVersion;
                     packageName = pair.packageName;
                     appComponentFactory = pair.appComponentFactory;
                 }
@@ -226,7 +245,6 @@ public final class LSPatch {
                 if (multiple) logger.v("Skipping...");
                 continue;
             }
-            isExtraApp = !ConstantsM.DEFAULT_FB_PACKAGES.contains(packageName);
 
             if (ConstantsM.isInvalidPackage(packageName)) {
                 logger.e("Input file is not a valid facebook app");
@@ -234,16 +252,28 @@ public final class LSPatch {
                 continue;
             }
 
-            final boolean signOnly = !(patchForcibly || shouldPatch(packageName));
+            this.embedSignature = !ConstantsM.isSignatureHardcoded(packageName);
+
+            final boolean signOnly = signForcibly || !(patchForcibly || shouldPatch(packageName));
 
             if (!signOnly) {
-                if (appComponentFactory == null || appComponentFactory.isEmpty()) {
-                    logger.e("Missing required app component");
-                    if (multiple) logger.v("Skipping...");
-                    continue;
+                String error = "";
+                boolean skip = false;
+                if (minSdkVersion != 0 && minSdkVersion < 28) {
+                    skip = true;
+                    error = "Minimum supported version is Android 9 (Min-Sdk: 28).";
+                    error += " If the APK does not require patching, try --sign-only option.";
                 }
-                if (appComponentFactory.equals(PROXY_APP_COMPONENT_FACTORY)) {
-                    logger.e("Input file was previously patched");
+                else if (appComponentFactory == null || appComponentFactory.isEmpty()) {
+                    skip = true;
+                    error = "Missing required app component";
+                }
+                else if (appComponentFactory.equals(PROXY_APP_COMPONENT_FACTORY)) {
+                    skip = true;
+                    error = "Input file was previously patched";
+                }
+                if (skip) {
+                    logger.e(error);
                     if (multiple) logger.v("Skipping...");
                     continue;
                 }
@@ -345,7 +375,7 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach assets", e);
             }
 
-            var config = new PatchConfig(fallbackMode, appComponentFactory);
+            var config = new PatchConfig(fallbackMode, appComponentFactory, loadOnAll, modules);
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
@@ -423,7 +453,7 @@ public final class LSPatch {
         ModificationProperty property = new ModificationProperty();
         property.addUsesPermission("android.permission.QUERY_ALL_PACKAGES");
         property.addApplicationAttribute(new AttributeItem("appComponentFactory", PROXY_APP_COMPONENT_FACTORY));
-        if (isExtraApp) {
+        if (embedSignature) {
             logger.d("adding metadata");
             try {
                 var signature = ApkSignatureHelper.getApkSignInfo(srcApkFile.getAbsolutePath());

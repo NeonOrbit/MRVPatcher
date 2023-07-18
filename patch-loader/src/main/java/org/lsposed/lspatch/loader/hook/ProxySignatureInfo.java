@@ -67,8 +67,8 @@ public class ProxySignatureInfo implements Parcelable.Creator<PackageInfo> {
         String replacement = null;
         if (hasSignatures(packageInfo)) {
             String pkg = packageInfo.packageName;
-            if (ConstantsM.DEFAULT_FB_PACKAGES.contains(pkg)) {
-                replacement = ConstantsM.DEFAULT_FB_SIGNATURE;
+            if (ConstantsM.isSignatureHardcoded(pkg)) {
+                replacement = ConstantsM.getSignature(pkg);
             } else if (signatures.containsKey(pkg)) {
                 replacement = signatures.get(pkg);
             } else {
