@@ -22,6 +22,7 @@ import com.google.gson.Gson;
 import com.wind.meditor.core.ManifestEditor;
 import com.wind.meditor.property.AttributeItem;
 import com.wind.meditor.property.ModificationProperty;
+import com.wind.meditor.utils.NodeValue;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -88,18 +89,21 @@ public final class LSPatch {
     @Parameter(names = {"-p", "--patch"}, order = 5, help = true, description = "Forcefully patch apps that do not require patching")
     private boolean patchForcibly = false;
 
-    @Parameter(names = {"--sign-only"}, order = 6, help = true, description = "Skip patching (apk signing only)")
+    @Parameter(names = {"--fix-conf"}, order = 6, help = true, description = "Fix conflict issue [If unable to remove other FB apps]")
+    private boolean fixConflict = false;
+
+    @Parameter(names = {"--sign-only"}, order = 7, help = true, description = "Skip patching (apk signing only)")
     private boolean signForcibly = false;
 
-    @Parameter(names = {"--fallback"}, order = 7, help = true, description = "Use fallback mode (slow) [In case default patched apps fail]")
+    @Parameter(names = {"--fallback"}, order = 8, help = true, description = "Use fallback mode (slow) [If default patched apps fail]")
     private boolean fallbackMode = false;
 
-    @Parameter(names = {"--modules"}, order = 8, variableArity = true, help = true, description = "Allow third-party modules [package names]")
+    @Parameter(names = {"--modules"}, order = 9, variableArity = true, help = true, description = "Allow third-party modules [package names]")
     private List<String> modules = new ArrayList<>();
 
-    // @Parameter(names = {"--res-hook"}, order = 9, help = true, description = "Enable resource hook (disabled by default) [unnecessary]")
+    // @Parameter(names = {"--res-hook"}, order = 10, help = true, description = "Enable resource hook (disabled by default) [unnecessary]")
 
-    @Parameter(names = {"--load-on-all"}, order = 10, help = true, description = "Load modules for all patched apps, not just Messenger. [unnecessary]")
+    @Parameter(names = {"--load-on-all"}, order = 11, hidden = true, description = "Load modules for all patched apps, not just Messenger. [unnecessary]")
     private boolean loadOnAll = false;
 
     @Parameter(names = {"--out-file"}, hidden = true, description = "[Internal Option] absolute path for output")
@@ -219,7 +223,7 @@ public final class LSPatch {
             logger.v("\nProgress:");
             logger.d("parsing manifest");
 
-            int minSdkVersion;
+            int minSdk;
             String packageName;
             String appComponentFactory;
             try (var zFile = ZFile.openReadOnly(srcApkFile)) {
@@ -236,7 +240,7 @@ public final class LSPatch {
                         if (multiple) logger.v("Skipping...");
                         continue;
                     }
-                    minSdkVersion = pair.minSdkVersion;
+                    minSdk = pair.minSdkVersion;
                     packageName = pair.packageName;
                     appComponentFactory = pair.appComponentFactory;
                 }
@@ -259,12 +263,7 @@ public final class LSPatch {
             if (!signOnly) {
                 String error = "";
                 boolean skip = false;
-                if (minSdkVersion != 0 && minSdkVersion < 28) {
-                    skip = true;
-                    error = "Minimum supported version is Android 9 (Min-Sdk: 28).";
-                    error += " If the APK does not require patching, try --sign-only option.";
-                }
-                else if (appComponentFactory == null || appComponentFactory.isEmpty()) {
+                if (appComponentFactory == null || appComponentFactory.isEmpty()) {
                     skip = true;
                     error = "Missing required app component";
                 }
@@ -300,7 +299,7 @@ public final class LSPatch {
                     sign(srcApkFile, outputFile);
                     results.replace(apk, "[rsigned] " + relative);
                 } else {
-                    patch(srcApkFile, outputFile, appComponentFactory);
+                    patch(srcApkFile, outputFile, appComponentFactory, minSdk);
                     results.replace(apk, "[patched] " + relative);
                 }
                 logger.v("Finished");
@@ -322,7 +321,7 @@ public final class LSPatch {
         }
     }
 
-    public void patch(File srcApkFile, File outputFile, String appComponentFactory) throws PatchError {
+    public void patch(File srcApkFile, File outputFile, String appComponent, int minSdk) throws PatchError {
         logger.d("patching files");
         final File internalApk;
         try {
@@ -341,10 +340,10 @@ public final class LSPatch {
              )
         ) {
             var manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
-            try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open()))) {
+            try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open(), minSdk))) {
                 dstZFile.add(ANDROID_MANIFEST_XML, is);
             } catch (IOException e) {
-                throw new PatchError("Failed to attach manifest", e);
+                throw new PatchError("Failed to patch manifest", e);
             }
 
             ARCH_LIBRARY_MAP.forEach((arch, lib) -> {
@@ -375,7 +374,7 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach assets", e);
             }
 
-            var config = new PatchConfig(fallbackMode, appComponentFactory, loadOnAll, modules);
+            var config = new PatchConfig(fallbackMode, appComponent, loadOnAll, modules);
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
@@ -421,7 +420,6 @@ public final class LSPatch {
     }
 
     public void sign(File srcApkFile, File outputFile) throws PatchError {
-        logger.d("signing apk");
         File internalApk;
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
@@ -431,7 +429,21 @@ public final class LSPatch {
         }
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
-            if (!fallbackMode) {
+            if (fixConflict) {
+                logger.d("fixing issues");
+                try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS); var srcZFile = ZFile.openReadOnly(srcApkFile)) {
+                    try (var is = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML)).open()) {
+                        dstZFile.add(ANDROID_MANIFEST_XML, new ByteArrayInputStream(patchApkConflicts(is)));
+                    } catch (IOException e) {
+                        throw new PatchError("Failed to patch manifest", e);
+                    }
+                    dstZFile.realign();
+                } catch (IOException e) {
+                    throw new PatchError("Failed to patch apk", e);
+                }
+            }
+            logger.d("signing apk");
+            if (fixConflict || !fallbackMode) {
                 signApk(internalApk, outputFile);
             } else {
                 try (var dstZFile = ZFile.openReadWrite(internalApk)) {
@@ -449,10 +461,21 @@ public final class LSPatch {
         }
     }
 
-    private byte[] patchManifest(File srcApkFile, InputStream is) throws IOException {
+    private byte[] patchApkConflicts(InputStream is) throws IOException {
+        var os = new ByteArrayOutputStream();
+        new ManifestEditor(is, os, new ModificationProperty().markAllPermissionsForDeletion()).processManifest();
+        return os.toByteArray();
+    }
+
+    private byte[] patchManifest(File srcApkFile, InputStream is, int minSdk) throws IOException {
         ModificationProperty property = new ModificationProperty();
         property.addUsesPermission("android.permission.QUERY_ALL_PACKAGES");
         property.addApplicationAttribute(new AttributeItem("appComponentFactory", PROXY_APP_COMPONENT_FACTORY));
+        if (minSdk != 0 && minSdk < 28) property.addUsesSdkAttribute(new AttributeItem(NodeValue.UsesSDK.MIN_SDK_VERSION, "28"));
+        if (fixConflict) {
+            logger.d("fixing issues");
+            property.markAllPermissionsForDeletion();
+        }
         if (embedSignature) {
             logger.d("adding metadata");
             try {
