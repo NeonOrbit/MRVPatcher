@@ -3,14 +3,29 @@ package org.lsposed.lspatch.share;
 import java.util.Set;
 
 public final class ConstantsM {
+  public static final String DEFAULT_TARGET_PACKAGE = "com.facebook.orca";
   public static final String VALID_FB_PACKAGE_PREFIX = "com.facebook.";
   public static final String VALID_IG_PACKAGE_PREFIX = "com.instagram.";
   public static final String VALID_WA_PACKAGE = "com.whatsapp";
 
+  private static final String MASK_PREFIX = "mrv.masked.";
+
+  public static String maskPackage(String pkg) {
+    return pkg.startsWith(MASK_PREFIX) ? pkg : MASK_PREFIX + pkg;
+  }
+
+  public static String removeMask(String pkg) {
+    return pkg.startsWith(MASK_PREFIX) ? pkg.replace(MASK_PREFIX, "") : pkg;
+  }
+
+  public static boolean isTargetPackage(String pkg) {
+    return pkg.equals(DEFAULT_TARGET_PACKAGE);
+  }
+
   public static boolean isInvalidPackage(String pkg) {
     return !pkg.startsWith(VALID_FB_PACKAGE_PREFIX) &&
            !pkg.startsWith(VALID_IG_PACKAGE_PREFIX) &&
-           !pkg.contains(VALID_WA_PACKAGE);
+           !pkg.startsWith(MASK_PREFIX) && !pkg.contains(VALID_WA_PACKAGE);
   }
 
   public static final Set<String> DEFAULT_FB_PACKAGES = Set.of(

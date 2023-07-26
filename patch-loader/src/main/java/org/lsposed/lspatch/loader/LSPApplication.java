@@ -77,7 +77,7 @@ public class LSPApplication {
             LSPLoader.init(appContext);
             ModuleManager.init(appContext);
             LSPLoader.startInnerHook(appContext);
-            if (ModuleManager.moduleLoaded) {
+            if (ModuleManager.isModuleLoaded()) {
                 XposedInit.loadModules();
                 LSPLoader.initModules(appLoadedApk);
                 Log.i(TAG, "Modules initialized");

@@ -7,6 +7,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
 
+import org.lsposed.lspatch.share.ConstantsM;
 import org.lsposed.lspatch.util.ModuleLoader;
 import org.lsposed.lspd.models.Module;
 
@@ -16,19 +17,15 @@ import java.util.List;
 
 public class ModuleManager {
     private static final String TAG = LSPApplication.TAG;
-    private static final String TARGET_PACKAGE = "com.facebook.orca";
 
     private static final long DEF_MODULE_MIN = 240;
     private static final String DEF_MODULE_NAME = "ChatHeadEnabler";
     private static final String DEF_MODULE_PACKAGE = "app.neonorbit.chatheadenabler";
 
     private static final HashMap<String, Module> MODULES = new LinkedHashMap<>(2);
-    public static List<Module> getPreloadedModules() {
-        return List.copyOf(MODULES.values());
-    }
 
-    public static boolean moduleLoaded = false;
-    public static boolean isInitialized = false;
+    private static boolean moduleLoaded = false;
+    private static boolean isInitialized = false;
 
     public static void init(Context context) {
         if (ModuleManager.isInitialized) return;
@@ -38,8 +35,20 @@ public class ModuleManager {
         ModuleManager.isInitialized = true;
     }
 
+    public static boolean isModuleLoaded() {
+        return moduleLoaded;
+    }
+
+    public static List<Module> getPreloadedModules() {
+        return List.copyOf(MODULES.values());
+    }
+
+    public static boolean isDefaultModuleLoaded() {
+        return MODULES.containsKey(DEF_MODULE_PACKAGE);
+    }
+
     private static boolean isValid(Context context) {
-        return LSPApplication.config.targetAll() || context.getPackageName().equals(TARGET_PACKAGE);
+        return LSPApplication.config.targetAll() || ConstantsM.isTargetPackage(context.getPackageName());
     }
 
     private static boolean loadModules(Context context) {

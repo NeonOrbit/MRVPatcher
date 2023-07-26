@@ -92,19 +92,25 @@ public final class LSPatch {
     @Parameter(names = {"--fix-conf"}, order = 6, help = true, description = "Fix conflict issue [If unable to remove other FB apps]")
     private boolean fixConflict = false;
 
-    @Parameter(names = {"--sign-only"}, order = 7, help = true, description = "Skip patching (apk signing only)")
+    @Parameter(names = {"--mask-pkg"}, order = 7, help = true, description = "Mask package name [If unable to remove Messenger itself]")
+    private boolean maskPackage = false;
+
+    @Parameter(names = {"--sign-only"}, order = 8, help = true, description = "Skip patching (apk signing only)")
     private boolean signForcibly = false;
 
-    @Parameter(names = {"--fallback"}, order = 8, help = true, description = "Use fallback mode (slow) [If default patched apps fail]")
+    @Parameter(names = {"--fallback"}, order = 9, help = true, description = "Use fallback mode (slow) [If default patched apps fail]")
     private boolean fallbackMode = false;
 
-    @Parameter(names = {"--modules"}, order = 9, variableArity = true, help = true, description = "Allow third-party modules [package names]")
+    @Parameter(names = {"--modules"}, order = 10, variableArity = true, help = true, description = "Allow third-party modules [package names]")
     private List<String> modules = new ArrayList<>();
 
-    // @Parameter(names = {"--res-hook"}, order = 10, help = true, description = "Enable resource hook (disabled by default) [unnecessary]")
+    // @Parameter(names = {"--res-hook"}, order = 11, help = true, description = "Enable resource hook (disabled by default) [unnecessary]")
 
-    @Parameter(names = {"--load-on-all"}, order = 11, hidden = true, description = "Load modules for all patched apps, not just Messenger. [unnecessary]")
+    @Parameter(names = {"--load-on-all"}, order = 12, hidden = true, description = "Load modules for all patched apps, not just Messenger. [unnecessary]")
     private boolean loadOnAll = false;
+
+    @Parameter(names = {"--no-restriction"}, hidden = true, description = "[Internal Option] Patch any apps")
+    private boolean noRestriction = false;
 
     @Parameter(names = {"--out-file"}, hidden = true, description = "[Internal Option] absolute path for output")
     private String internalOutputPath = null;
@@ -191,6 +197,7 @@ public final class LSPatch {
             jCommander.usage();
             return;
         }
+        if (!checkInputFiles()) return;
         if (patchForcibly && signForcibly) {
             logger.e(" --patch and --sign-only options can not be used together");
             return;
@@ -250,33 +257,31 @@ public final class LSPatch {
                 continue;
             }
 
-            if (ConstantsM.isInvalidPackage(packageName)) {
-                logger.e("Input file is not a valid facebook app");
-                if (multiple) logger.v("Skipping...");
-                continue;
-            }
-
-            this.embedSignature = !ConstantsM.isSignatureHardcoded(packageName);
-
             final boolean signOnly = signForcibly || !(patchForcibly || shouldPatch(packageName));
 
             if (!signOnly) {
                 String error = "";
-                boolean skip = false;
-                if (appComponentFactory == null || appComponentFactory.isEmpty()) {
-                    skip = true;
+                boolean skip = true;
+                if (!noRestriction && ConstantsM.isInvalidPackage(packageName)) {
+                    error = "Input file is not a valid facebook app";
+                } else if (appComponentFactory == null || appComponentFactory.isEmpty()) {
                     error = "Missing required app component";
-                }
-                else if (appComponentFactory.equals(PROXY_APP_COMPONENT_FACTORY)) {
-                    skip = true;
+                } else if (appComponentFactory.equals(PROXY_APP_COMPONENT_FACTORY)) {
                     error = "Input file was previously patched";
+                } else if (maskPackage && !noRestriction && !packageName.equals(ConstantsM.DEFAULT_TARGET_PACKAGE)) {
+                    error = "[--mask-pkg] option should only be used for Messenger";
+                } else {
+                    skip = false;
                 }
                 if (skip) {
                     logger.e(error);
                     if (multiple) logger.v("Skipping...");
                     continue;
                 }
+                this.fixConflict |= maskPackage;
             }
+
+            this.embedSignature = maskPackage || !ConstantsM.isSignatureHardcoded(packageName);
 
             final File outputFile = (internalOutputPath != null ?
                 new File(internalOutputPath) :
@@ -299,7 +304,7 @@ public final class LSPatch {
                     sign(srcApkFile, outputFile);
                     results.replace(apk, "[rsigned] " + relative);
                 } else {
-                    patch(srcApkFile, outputFile, appComponentFactory, minSdk);
+                    patch(srcApkFile, outputFile, packageName, appComponentFactory, minSdk);
                     results.replace(apk, "[patched] " + relative);
                 }
                 logger.v("Finished");
@@ -321,7 +326,7 @@ public final class LSPatch {
         }
     }
 
-    public void patch(File srcApkFile, File outputFile, String appComponent, int minSdk) throws PatchError {
+    public void patch(File srcApkFile, File outputFile, String pkg, String appComponent, int minSdk) throws PatchError {
         logger.d("patching files");
         final File internalApk;
         try {
@@ -340,7 +345,7 @@ public final class LSPatch {
              )
         ) {
             var manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
-            try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open(), minSdk))) {
+            try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open(), pkg, minSdk))) {
                 dstZFile.add(ANDROID_MANIFEST_XML, is);
             } catch (IOException e) {
                 throw new PatchError("Failed to patch manifest", e);
@@ -374,7 +379,7 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach assets", e);
             }
 
-            var config = new PatchConfig(fallbackMode, appComponent, loadOnAll, modules);
+            var config = new PatchConfig(appComponent, fallbackMode, maskPackage, loadOnAll, modules);
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
@@ -467,14 +472,23 @@ public final class LSPatch {
         return os.toByteArray();
     }
 
-    private byte[] patchManifest(File srcApkFile, InputStream is, int minSdk) throws IOException {
+    private byte[] patchManifest(File srcApkFile, InputStream is, String pkg, int minSdk) throws IOException {
         ModificationProperty property = new ModificationProperty();
         property.addUsesPermission("android.permission.QUERY_ALL_PACKAGES");
         property.addApplicationAttribute(new AttributeItem("appComponentFactory", PROXY_APP_COMPONENT_FACTORY));
         if (minSdk != 0 && minSdk < 28) property.addUsesSdkAttribute(new AttributeItem(NodeValue.UsesSDK.MIN_SDK_VERSION, "28"));
         if (fixConflict) {
-            logger.d("fixing issues");
+            logger.d("patching issues");
             property.markAllPermissionsForDeletion();
+        }
+        if (maskPackage) {
+            logger.d("masking package");
+            property.addManifestAttribute(
+                    new AttributeItem(NodeValue.Manifest.PACKAGE, ConstantsM.maskPackage(pkg)).setNamespace(null)
+            );
+            property.setProviderAuthoritiesMod(auth ->
+                    auth.contains(ConstantsM.VALID_FB_PACKAGE_PREFIX) ? ConstantsM.maskPackage(auth) : auth
+            );
         }
         if (embedSignature) {
             logger.d("adding metadata");
@@ -553,6 +567,17 @@ public final class LSPatch {
         } catch (ClassNotFoundException e) {
             return DEFAULT_SIGNING_KEY + ".jks";
         }
+    }
+
+    private boolean checkInputFiles() {
+        for (var path : apkPaths) {
+            if (!new File(path).isFile()) {
+                if (path.startsWith("-")) logger.e(" Invalid option: " + path);
+                else logger.e(" '" + path + "' does not exist");
+                return false;
+            }
+        }
+        return true;
     }
 
     private static File getTempFile(String dir, String name) throws IOException {

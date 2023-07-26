@@ -6,6 +6,8 @@ import android.content.Context;
 
 import org.lsposed.lspatch.loader.hook.AppSignatureHook;
 import org.lsposed.lspatch.loader.hook.AppSpecifiedHook;
+import org.lsposed.lspatch.loader.hook.PackageMaskHook;
+import org.lsposed.lspatch.share.ConstantsM;
 import org.lsposed.lspd.core.ApplicationServiceClient;
 import org.lsposed.lspd.core.Startup;
 import org.lsposed.lspd.deopt.PrebuiltMethodsDeopter;
@@ -38,15 +40,22 @@ public class LSPLoader {
     public static void startInnerHook(Context context) {
         new AppSignatureHook().load(context);
         new AppSpecifiedHook().load(context);
+        if (LSPApplication.config.pkgMasked) {
+            new PackageMaskHook().load(context);
+        }
     }
 
     public static void initModules(LoadedApk loadedApk) {
         var lpparam = new XC_LoadPackage.LoadPackageParam(XposedBridge.sLoadedPackageCallbacks);
-        lpparam.packageName = loadedApk.getPackageName();
-        lpparam.processName = ActivityThread.currentProcessName();
+        lpparam.packageName = removePkgMask(loadedApk.getPackageName());
+        lpparam.processName = removePkgMask(ActivityThread.currentProcessName());
         lpparam.classLoader = loadedApk.getClassLoader();
         lpparam.appInfo = loadedApk.getApplicationInfo();
         lpparam.isFirstApplication = true;
         XC_LoadPackage.callAll(lpparam);
+    }
+
+    private static String removePkgMask(String pkg) {
+        return LSPApplication.config.pkgMasked ? ConstantsM.removeMask(pkg) : pkg;
     }
 }

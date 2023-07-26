@@ -27,8 +27,10 @@ public class AppSpecifiedHook implements AppInnerHook {
 
     @Override
     public void load(Context context) {
-        hotPatchForDeepLinking(context);
         hotPatchForAccountCenter(context);
+        if (!LSPApplication.config.pkgMasked) {
+            hotPatchForDeepLinking(context);
+        }
     }
 
     private static void hotPatchForAccountCenter(Context context) {
