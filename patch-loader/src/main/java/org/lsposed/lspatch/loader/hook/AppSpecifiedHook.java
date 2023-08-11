@@ -12,6 +12,7 @@ import android.util.Log;
 import org.lsposed.lspatch.loader.LSPApplication;
 
 import java.util.Set;
+import java.util.function.Consumer;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -29,7 +30,8 @@ public class AppSpecifiedHook implements AppInnerHook {
     public void load(Context context) {
         hotPatchForAccountCenter(context);
         if (!LSPApplication.config.pkgMasked) {
-            hotPatchForDeepLinking(context);
+            hotPatchForMsgToFbDeepLinking(context);
+            hotPatchForFbToInstDeepLinking(context);
         }
     }
 
@@ -49,8 +51,37 @@ public class AppSpecifiedHook implements AppInnerHook {
         XposedBridge.hookAllMethods(ContentResolver.class, "acquireUnstableContentProviderClient", hook);
     }
 
-    private void hotPatchForDeepLinking(Context context) {
-        if (context.getPackageName().equals("com.facebook.katana")) return;
+    private void hotPatchForMsgToFbDeepLinking(Context context) {
+        if (!context.getPackageName().equals("com.facebook.orca")) return;
+        hookStartActivity(intent -> {
+            if (intent.getData() == null || intent.getData().getHost() == null || intent.getData().getScheme() == null) return;
+            if (LINKS.contains(intent.getData().getHost())) {
+                prepareAndSanitizeIntentForDeepLinking(intent);
+                intent.setComponent(new ComponentName("com.facebook.katana", "com.facebook.katana.IntentUriHandler"));
+                Log.i(LSPApplication.TAG, "Patched Intent for facebook deep linking: " + intent);
+            }
+        });
+    }
+
+    private void hotPatchForFbToInstDeepLinking(Context context) {
+        if (!context.getPackageName().equals("com.facebook.katana")) return;
+        hookStartActivity(intent -> {
+            if (intent.getData() == null || intent.getData().getHost() == null || intent.getData().getScheme() == null) return;
+            if (intent.getData().getScheme().contains("http") && intent.getData().getHost().contains("instagram.com")) {
+                prepareAndSanitizeIntentForDeepLinking(intent);
+                intent.setComponent(new ComponentName("com.instagram.android", "com.instagram.url.UrlHandlerLauncherActivity"));
+                Log.i(LSPApplication.TAG, "Patched Intent for instagram deep linking: " + intent);
+            }
+        });
+    }
+
+    private void prepareAndSanitizeIntentForDeepLinking(Intent intent) {
+        if (intent.getAction() == null) intent.setAction(Intent.ACTION_VIEW);
+        if (intent.getCategories() == null) intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        if (intent.getExtras() != null) intent.getExtras().keySet().forEach(intent::removeExtra);
+    }
+
+    private void hookStartActivity(Consumer<Intent> consumer) {
         XC_MethodHook hook = new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) {
@@ -59,17 +90,10 @@ public class AppSpecifiedHook implements AppInnerHook {
                     return; // Prevent multiple call
                 }
                 Intent intent = (Intent) param.args[0];
-                if (intent.getData() == null) return;
-                if (intent.getAction() != null && intent.getCategories() != null && intent.getComponent() != null) return;
-                if (intent.getComponent() != null && intent.getComponent().getClassName().toLowerCase().contains("browser")) return;
                 if (intent.getAction() != null && !intent.getAction().equals(Intent.ACTION_VIEW)) return;
                 if (intent.getCategories() != null && !intent.getCategories().contains(Intent.CATEGORY_BROWSABLE)) return;
-                if (LINKS.contains(intent.getData().getHost())) {
-                    if (intent.getAction() == null) intent.setAction(Intent.ACTION_VIEW);
-                    if (intent.getCategories() == null) intent.addCategory(Intent.CATEGORY_BROWSABLE);
-                    intent.setComponent(new ComponentName("com.facebook.katana", "com.facebook.katana.IntentUriHandler"));
-                    Log.i(LSPApplication.TAG, "Patched Intent for deep linking: " + intent);
-                }
+                if (intent.getComponent() != null && !intent.getComponent().getClassName().toLowerCase().contains("browser")) return;
+                consumer.accept((Intent) param.args[0]);
             }
         };
         XposedHelpers.findAndHookMethod(ContextWrapper.class, "startActivity", Intent.class, hook);

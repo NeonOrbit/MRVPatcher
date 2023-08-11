@@ -8,10 +8,18 @@ public final class ConstantsM {
   public static final String VALID_IG_PACKAGE_PREFIX = "com.instagram.";
   public static final String VALID_WA_PACKAGE = "com.whatsapp";
 
-  private static final String MASK_PREFIX = "mrv.masked.";
+  public static final String MASK_PREFIX = "mrv.masked.";
 
   public static String maskPackage(String pkg) {
     return pkg.startsWith(MASK_PREFIX) ? pkg : MASK_PREFIX + pkg;
+  }
+
+  public static String maskPackagedString(String arg) {
+    return maskPackage(arg.startsWith(".") ? arg.substring(1) : arg);
+  }
+
+  public static String maskFbPackagedString(String arg) {
+    return arg.contains(VALID_FB_PACKAGE_PREFIX) ? maskPackagedString(arg) : arg;
   }
 
   public static String removeMask(String pkg) {

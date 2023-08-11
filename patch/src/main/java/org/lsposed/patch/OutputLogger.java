@@ -1,7 +1,9 @@
 package org.lsposed.patch;
 
+import javax.annotation.Nonnull;
+
 public interface OutputLogger {
-    default void v(String msg) {}
-    void d(String msg);
-    void e(String msg);
+    default void v(@Nonnull String msg) {}
+    void d(@Nonnull String msg);
+    void e(@Nonnull String msg);
 }

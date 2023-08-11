@@ -54,6 +54,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
+import java.util.stream.Collectors;
+
+import javax.annotation.Nonnull;
 
 @SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal", "ResultOfMethodCallIgnored"})
 public final class LSPatch {
@@ -89,7 +92,7 @@ public final class LSPatch {
     @Parameter(names = {"-p", "--patch"}, order = 5, help = true, description = "Forcefully patch apps that do not require patching")
     private boolean patchForcibly = false;
 
-    @Parameter(names = {"--fix-conf"}, order = 6, help = true, description = "Fix conflict issue [If unable to remove other FB apps]")
+    @Parameter(names = {"--fix-conf"}, order = 6, help = true, description = "Fix apk-conflicts [If unable to remove other fb apps]")
     private boolean fixConflict = false;
 
     @Parameter(names = {"--mask-pkg"}, order = 7, help = true, description = "Mask package name [If unable to remove Messenger itself]")
@@ -101,6 +104,7 @@ public final class LSPatch {
     @Parameter(names = {"--fallback"}, order = 9, help = true, description = "Use fallback mode (slow) [If default patched apps fail]")
     private boolean fallbackMode = false;
 
+    @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
     @Parameter(names = {"--modules"}, order = 10, variableArity = true, help = true, description = "Allow third-party modules [package names]")
     private List<String> modules = new ArrayList<>();
 
@@ -111,6 +115,10 @@ public final class LSPatch {
 
     @Parameter(names = {"--no-restriction"}, hidden = true, description = "[Internal Option] Patch any apps")
     private boolean noRestriction = false;
+
+    @SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
+    @Parameter(names = {"--key-args"}, hidden = true, variableArity = true, description = "[Internal Option] keystore [path,pass,alias,pass]")
+    private List<String> internalKeystore = new ArrayList<>();
 
     @Parameter(names = {"--out-file"}, hidden = true, description = "[Internal Option] absolute path for output")
     private String internalOutputPath = null;
@@ -158,11 +166,11 @@ public final class LSPatch {
 
     private static OutputLogger logger = new OutputLogger() {
         @Override
-        public void v(String msg) { System.out.println(msg); }
+        public void v(@Nonnull String msg) { System.out.println(msg); }
         @Override
-        public void d(String msg) { System.out.println(" -> " + msg); }
+        public void d(@Nonnull String msg) { System.out.println(" -> " + msg); }
         @Override
-        public void e(String msg) { System.err.println("\nError: " + msg + "\n"); }
+        public void e(@Nonnull String msg) { System.err.println("\nError: " + msg + "\n"); }
     };
 
     private final JCommander jCommander;
@@ -379,7 +387,8 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach assets", e);
             }
 
-            var config = new PatchConfig(appComponent, fallbackMode, maskPackage, loadOnAll, modules);
+            var mods = modules.stream().map(String::trim).filter(it -> !it.isBlank()).collect(Collectors.toList());
+            var config = new PatchConfig(appComponent, fallbackMode, fixConflict, maskPackage, loadOnAll, mods);
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
@@ -388,6 +397,7 @@ public final class LSPatch {
             }
 
             if (fallbackMode) {
+            logger.d("linking files");
                 try {
                     registerApkSigner(dstZFile);
                 } catch (IOException | GeneralSecurityException e) {
@@ -435,7 +445,7 @@ public final class LSPatch {
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
             if (fixConflict) {
-                logger.d("fixing issues");
+                logger.d("patching issues");
                 try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS); var srcZFile = ZFile.openReadOnly(srcApkFile)) {
                     try (var is = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML)).open()) {
                         dstZFile.add(ANDROID_MANIFEST_XML, new ByteArrayInputStream(patchApkConflicts(is)));
@@ -468,7 +478,11 @@ public final class LSPatch {
 
     private byte[] patchApkConflicts(InputStream is) throws IOException {
         var os = new ByteArrayOutputStream();
-        new ManifestEditor(is, os, new ModificationProperty().markAllPermissionsForDeletion()).processManifest();
+        new ManifestEditor(is, os, new ModificationProperty()
+                .setDeclaredPermissionMapper(ConstantsM::maskPackagedString)
+                .setUsesPermissionMapper(ConstantsM::maskFbPackagedString)
+                .setComponentPermissionMapper(ConstantsM::maskFbPackagedString)
+        ).processManifest();
         return os.toByteArray();
     }
 
@@ -479,15 +493,17 @@ public final class LSPatch {
         if (minSdk != 0 && minSdk < 28) property.addUsesSdkAttribute(new AttributeItem(NodeValue.UsesSDK.MIN_SDK_VERSION, "28"));
         if (fixConflict) {
             logger.d("patching issues");
-            property.markAllPermissionsForDeletion();
+            property.setDeclaredPermissionMapper(ConstantsM::maskPackagedString);
+            property.setUsesPermissionMapper(ConstantsM::maskFbPackagedString);
+            property.setComponentPermissionMapper(ConstantsM::maskFbPackagedString);
         }
         if (maskPackage) {
             logger.d("masking package");
             property.addManifestAttribute(
                     new AttributeItem(NodeValue.Manifest.PACKAGE, ConstantsM.maskPackage(pkg)).setNamespace(null)
             );
-            property.setProviderAuthoritiesMod(auth ->
-                    auth.contains(ConstantsM.VALID_FB_PACKAGE_PREFIX) ? ConstantsM.maskPackage(auth) : auth
+            property.setProviderAuthorityMapper(authority ->
+                    authority.contains(ConstantsM.VALID_FB_PACKAGE_PREFIX) ? ConstantsM.maskPackagedString(authority) : authority
             );
         }
         if (embedSignature) {
@@ -508,7 +524,15 @@ public final class LSPatch {
     private void setupSigningKey() throws IOException, GeneralSecurityException {
         String keyAlias = null;
         char[] keyPass, keyAliasPass;
-        if (userKey != null) {
+        if (!internalKeystore.isEmpty()) {
+            if (internalKeystore.size() != 4) throw new IllegalArgumentException(
+                    "Invalid keystore details"
+            );
+            userKey = internalKeystore.get(0);
+            keyPass = internalKeystore.get(1).toCharArray();
+            keyAlias = internalKeystore.get(2);
+            keyAliasPass = internalKeystore.get(3).toCharArray();
+        } else if (userKey != null) {
             if (!new File(userKey).exists()) {
                 throw new KeyStoreException("Keystore file doesn't exist");
             }
@@ -526,9 +550,8 @@ public final class LSPatch {
             keyAliasPass = keyPass;
         }
         var keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        try (var is = userKey != null ?
-            new FileInputStream(new File(userKey).getAbsoluteFile()) :
-            getClass().getClassLoader().getResourceAsStream(getDefaultKey())) {
+        try (var is = userKey != null ? new FileInputStream(new File(userKey).getAbsoluteFile()) :
+                getClass().getClassLoader().getResourceAsStream(getDefaultKey())) {
             keyStore.load(is, keyPass);
         }
         if (keyAlias == null) keyAlias = keyStore.aliases().nextElement();
@@ -595,7 +618,6 @@ public final class LSPatch {
         return t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
     }
 
-    @SuppressWarnings("unused")
     public static void setOutputLogger(OutputLogger logger) {
         LSPatch.logger = Objects.requireNonNull(logger);
     }

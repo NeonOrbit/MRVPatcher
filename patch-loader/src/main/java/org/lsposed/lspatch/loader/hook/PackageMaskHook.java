@@ -117,7 +117,7 @@ public class PackageMaskHook implements AppInnerHook {
                 try {
                     Uri uri = (Uri) param.args[0];
                     if (uri.getAuthority() != null && uri.getAuthority().contains(ConstantsM.VALID_FB_PACKAGE_PREFIX)) {
-                        param.args[0] = uri.buildUpon().authority(ConstantsM.maskPackage(uri.getAuthority())).build();
+                        param.args[0] = uri.buildUpon().authority(ConstantsM.maskPackagedString(uri.getAuthority())).build();
                     }
                 } catch (Throwable ignore) { }
             }

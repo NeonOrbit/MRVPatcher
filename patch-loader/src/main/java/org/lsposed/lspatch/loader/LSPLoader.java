@@ -7,6 +7,7 @@ import android.content.Context;
 import org.lsposed.lspatch.loader.hook.AppSignatureHook;
 import org.lsposed.lspatch.loader.hook.AppSpecifiedHook;
 import org.lsposed.lspatch.loader.hook.PackageMaskHook;
+import org.lsposed.lspatch.loader.hook.PermissionMaskHook;
 import org.lsposed.lspatch.share.ConstantsM;
 import org.lsposed.lspd.core.ApplicationServiceClient;
 import org.lsposed.lspd.core.Startup;
@@ -42,6 +43,8 @@ public class LSPLoader {
         new AppSpecifiedHook().load(context);
         if (LSPApplication.config.pkgMasked) {
             new PackageMaskHook().load(context);
+        } else if (LSPApplication.config.confFixed) {
+            new PermissionMaskHook().load(context);
         }
     }
 
