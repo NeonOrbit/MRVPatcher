@@ -6,6 +6,7 @@ import android.content.ContentResolver;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
 
@@ -35,7 +36,7 @@ public class AppSpecifiedHook implements AppInnerHook {
         }
     }
 
-    private static void hotPatchForAccountCenter(Context context) {
+    private void hotPatchForAccountCenter(Context context) {
         String pkg = context.getPackageName();
         XC_MethodHook hook = new XC_MethodHook() {
             @Override
@@ -53,8 +54,10 @@ public class AppSpecifiedHook implements AppInnerHook {
 
     private void hotPatchForMsgToFbDeepLinking(Context context) {
         if (!context.getPackageName().equals("com.facebook.orca")) return;
+        if (!isInstalled(context, "com.facebook.katana")) return;
         hookStartActivity(intent -> {
             if (intent.getData() == null || intent.getData().getHost() == null || intent.getData().getScheme() == null) return;
+            if (intent.getComponent() != null && !intent.getData().toString().contains("/reel/")) return;
             if (LINKS.contains(intent.getData().getHost())) {
                 prepareAndSanitizeIntentForDeepLinking(intent);
                 intent.setComponent(new ComponentName("com.facebook.katana", "com.facebook.katana.IntentUriHandler"));
@@ -65,7 +68,9 @@ public class AppSpecifiedHook implements AppInnerHook {
 
     private void hotPatchForFbToInstDeepLinking(Context context) {
         if (!context.getPackageName().equals("com.facebook.katana")) return;
+        if (!isInstalled(context, "com.instagram.android")) return;
         hookStartActivity(intent -> {
+            if (intent.getComponent() != null) return;
             if (intent.getData() == null || intent.getData().getHost() == null || intent.getData().getScheme() == null) return;
             if (intent.getData().getScheme().contains("http") && intent.getData().getHost().contains("instagram.com")) {
                 prepareAndSanitizeIntentForDeepLinking(intent);
@@ -98,5 +103,14 @@ public class AppSpecifiedHook implements AppInnerHook {
         };
         XposedHelpers.findAndHookMethod(ContextWrapper.class, "startActivity", Intent.class, hook);
         XposedHelpers.findAndHookMethod(Activity.class, "startActivity", Intent.class, Bundle.class, hook);
+    }
+
+    @SuppressWarnings("all")
+    private boolean isInstalled(Context context, String pkg) {
+        try {
+            var info = context.getPackageManager().getPackageInfo(pkg, 0);
+            return (info != null && info.applicationInfo.enabled);
+        } catch (PackageManager.NameNotFoundException ignore) { }
+        return false;
     }
 }
