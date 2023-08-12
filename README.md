@@ -1,28 +1,49 @@
 # MRVPatcher
 
-MRVPatcher is a patching tool to use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) on non-rooted devices.
+MRVPatcher is an APK patching tool that enables you to use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) 
+(along with other Xposed modules) on non-rooted devices.
 
-Android version of the patcher: [MRVPatch Manager](https://github.com/NeonOrbit/MRVPatchManager)
+Android version of the patcher: [MRVPatchManager](https://github.com/NeonOrbit/MRVPatchManager)
 
-Check [xda thread](https://forum.xda-developers.com/t/4331215) for details.
-
-### Patching Instruction
-- Download [MRVPatcher](https://github.com/NeonOrbit/MRVPatcher/releases/latest) tool
+### Patching Instructions
+- Download the [MRVPatcher](https://github.com/NeonOrbit/MRVPatcher/releases/latest) tool
 - Download and Install [Java JDK 11+](https://adoptium.net/?variant=openjdk11&jvmVariant=hotspot)
-- Download Messenger apk from [ApkMirror](https://www.apkmirror.com/apk/facebook-2/messenger)
-- Move the MRVPatcher and Messenger to a separate folder.
-- Open terminal (or cmd) on that folder.
-- Run command:
+- Download a Messenger APK from [ApkMirror](https://www.apkmirror.com/apk/facebook-2/messenger)
+- Move the Patcher and the APK to a separate folder.
+- Open a terminal (or command prompt) in that folder.
+- Run the following command:
 ```shell
 java -jar MRVPatcher.jar Messenger.apk
 ```
-- A new file Messenger-mrv.apk will be produced.
-- Follow the same instructions for any other Facebook apps.
+- A new file named "Messenger-mrv.apk" will be generated.
+- Repeat these steps for other Facebook apps as well.
 
-All available options:
-```shell
-java -jar MRVPatcher.jar --help
+List of available options:
 ```
+java -jar MRVPatcher.jar --help
+Usage: MRVPatcher [options] apks
+  Options:
+    -h, --help
+    -o, --output
+      Output directory
+    -ks, --keystore
+      Sign using an external keystore file
+    -ksp, --ks-prompt
+      Prompt for the keystore alias details
+    -p, --patch
+      Forcefully patch apps that do not require patching
+    --fix-conf
+      Fix apk-conflicts [In case you are unable to remove the preinstalled fb apps]
+    --mask-pkg
+      Mask package name [In case you are unable to remove the preinstalled messenger app]
+    --sign-only
+      Skip the patching process (apk signing only)
+    --fallback
+      Use fallback mode [In case default patched apps do not work]
+    --modules
+      Allow third-party modules [package names separated by comma]
+```
+For a detailed explanation, please refer to the [xda thread](https://forum.xda-developers.com/t/4331215).
 
 ## Credits
 
