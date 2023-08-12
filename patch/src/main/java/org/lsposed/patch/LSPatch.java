@@ -126,6 +126,9 @@ public final class LSPatch {
     @Parameter(names = {"--temp-dir"}, hidden = true, description = "[Internal Option] temp directory path")
     private String internalTempDir = null;
 
+    @Parameter(names = {"-v, --verbose"}, hidden = true, description = "[Internal Option]")
+    private boolean verbose = false;
+
     private boolean embedSignature = false;
 
     private static final List<String> DEFAULT_PATCHABLE_PACKAGE = ImmutableList.of(
@@ -182,9 +185,11 @@ public final class LSPatch {
     }
 
     public static void main(String... args) {
+        var verbose = false;
         try {
             LSPatch lsPatch = new LSPatch(args);
             lsPatch.help |= args.length == 0;
+            verbose = lsPatch.verbose;
             lsPatch.doCommandLine();
         } catch (Throwable t) {
             if (t instanceof CancellationException) {
@@ -192,6 +197,7 @@ public final class LSPatch {
             } else {
                 logger.e(getError(t));
             }
+            if (verbose) t.printStackTrace();
         }
     }
 
