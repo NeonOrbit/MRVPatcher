@@ -23,6 +23,7 @@ import com.wind.meditor.core.ManifestEditor;
 import com.wind.meditor.property.AttributeItem;
 import com.wind.meditor.property.ModificationProperty;
 import com.wind.meditor.utils.NodeValue;
+import com.wind.meditor.utils.PermissionType;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
@@ -485,9 +486,9 @@ public final class LSPatch {
     private byte[] patchApkConflicts(InputStream is) throws IOException {
         var os = new ByteArrayOutputStream();
         new ManifestEditor(is, os, new ModificationProperty()
-                .setDeclaredPermissionMapper(ConstantsM::maskPackagedString)
-                .setUsesPermissionMapper(ConstantsM::maskFbPackagedString)
-                .setComponentPermissionMapper(ConstantsM::maskFbPackagedString)
+                .setPermissionMapper((type, permission) -> (type == PermissionType.DECLARED_PERMISSION) ?
+                        ConstantsM.maskPackagedString(permission) : ConstantsM.maskFbPackagedString(permission)
+                )
         ).processManifest();
         return os.toByteArray();
     }
@@ -499,18 +500,16 @@ public final class LSPatch {
         if (minSdk != 0 && minSdk < 28) property.addUsesSdkAttribute(new AttributeItem(NodeValue.UsesSDK.MIN_SDK_VERSION, "28"));
         if (fixConflict) {
             logger.d("patching issues");
-            property.setDeclaredPermissionMapper(ConstantsM::maskPackagedString);
-            property.setUsesPermissionMapper(ConstantsM::maskFbPackagedString);
-            property.setComponentPermissionMapper(ConstantsM::maskFbPackagedString);
+            property.setPermissionMapper((type, permission) -> (type == PermissionType.DECLARED_PERMISSION) ?
+                    ConstantsM.maskPackagedString(permission) : ConstantsM.maskFbPackagedString(permission)
+            );
         }
         if (maskPackage) {
             logger.d("masking package");
             property.addManifestAttribute(
                     new AttributeItem(NodeValue.Manifest.PACKAGE, ConstantsM.maskPackage(pkg)).setNamespace(null)
             );
-            property.setProviderAuthorityMapper(authority ->
-                    authority.contains(ConstantsM.VALID_FB_PACKAGE_PREFIX) ? ConstantsM.maskPackagedString(authority) : authority
-            );
+            property.setAuthorityMapper(ConstantsM::maskPackagedString);
         }
         if (embedSignature) {
             logger.d("adding metadata");
