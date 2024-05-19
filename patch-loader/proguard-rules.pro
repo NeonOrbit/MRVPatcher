@@ -11,6 +11,7 @@
 -keep class de.robv.android.xposed.** { *; }
 -keep class io.github.xposed.xposedservice.** { *; }
 
+-keep class sun.misc.** { *; }
 -keep class sun.net.www.** { *; }
 -keep class org.xmlpull.** { *; }
 

@@ -37,7 +37,6 @@ import java.util.function.BiConsumer;
 import java.util.zip.ZipFile;
 
 import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.XposedInit;
 import hidden.HiddenApiBridge;
 
 /**
@@ -75,13 +74,9 @@ public class LSPApplication {
         try {
             lockProfile(appContext);
             LSPLoader.init(appContext);
-            ModuleManager.init(appContext);
-            LSPLoader.startInnerHook(appContext);
-            if (ModuleManager.isModuleLoaded()) {
-                XposedInit.loadModules();
-                LSPLoader.initModules(appLoadedApk);
-                Log.i(TAG, "Modules initialized");
-            }
+            ModuleManager.load(appContext);
+            LSPLoader.bootstrap(appContext);
+            LSPLoader.initModules(appLoadedApk);
         } catch (Throwable e) {
             Log.e(TAG, "Do hook", e);
         }
@@ -188,9 +183,9 @@ public class LSPApplication {
         for (int i = codePaths.size() - 1; i >= 0; i--) {
             final String splitName = i == 0 ? null : appInfo.splitNames[i - 1];
             final File curProfileFile = new File(profileDir, splitName == null ? "primary.prof" : splitName + ".split.prof").getAbsoluteFile();
-            Log.i(TAG, "Locking profile: " + curProfileFile.getAbsolutePath());
+            Log.i(TAG, "Locking profile [" + (curProfileFile.exists() ? "exist" : "not-exist") + "]: " + curProfileFile.getAbsolutePath());
             try {
-                if (!curProfileFile.canWrite() && Files.size(curProfileFile.toPath()) == 0) {
+                if (curProfileFile.exists() && !curProfileFile.canWrite() && Files.size(curProfileFile.toPath()) == 0) {
                     Log.i(TAG, "Skipping locked profile: " + curProfileFile.getAbsolutePath());
                     continue;
                 }
@@ -203,6 +198,7 @@ public class LSPApplication {
                     int permission = 256; // 00400
                     Os.chmod(curProfileFile.getAbsolutePath(), permission);
                 } else {
+                    Log.i(TAG, "Creating locked profile: " + curProfileFile.getAbsolutePath());
                     Files.createFile(curProfileFile.toPath(), attrs);
                 }
             } catch (Throwable e) {

@@ -7,7 +7,7 @@ Android version of the patcher: [MRVPatchManager](https://github.com/NeonOrbit/M
 
 ### Patching Instructions
 - Download the [MRVPatcher](https://github.com/NeonOrbit/MRVPatcher/releases/latest) tool
-- Download and Install [Java JDK 11+](https://adoptium.net/?variant=openjdk11&jvmVariant=hotspot)
+- Download and Install [Java JDK 17+](https://adoptium.net/temurin/releases/?variant=openjdk17&jvmVariant=hotspot)
 - Download a Messenger APK from [ApkMirror](https://www.apkmirror.com/apk/facebook-2/messenger)
 - Move the Patcher and the APK to a separate folder.
 - Open a terminal (or command prompt) in that folder.

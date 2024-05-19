@@ -1,6 +1,5 @@
 package org.lsposed.lspatch.loader;
 
-import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
@@ -9,19 +8,20 @@ import org.lsposed.lspd.models.Module;
 import org.lsposed.lspd.service.ILSPApplicationService;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.List;
 
 public class LSPAppService extends ILSPApplicationService.Stub {
     public LSPAppService() {}
 
     @Override
-    public IBinder requestModuleBinder(String name) {
-        return null;
+    public List<Module> getLegacyModulesList() {
+        return ModuleManager.getPreloadedModules();
     }
 
     @Override
     public List<Module> getModulesList() {
-        return ModuleManager.getPreloadedModules();
+        return new ArrayList<>();
     }
 
     @Override
@@ -32,12 +32,13 @@ public class LSPAppService extends ILSPApplicationService.Stub {
     }
 
     @Override
-    public Bundle requestRemotePreference(String packageName, int userId, IBinder callback) {
+    public ParcelFileDescriptor requestInjectedManagerBinder(List<IBinder> binder) {
         return null;
     }
 
     @Override
-    public ParcelFileDescriptor requestInjectedManagerBinder(List<IBinder> binder) {
-        return null;
+    @SuppressWarnings("all")
+    public IBinder asBinder() {
+        return this;
     }
 }

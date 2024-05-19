@@ -8,8 +8,9 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 val jarVersion by extra("5.5.3")
 
 plugins {
-    id("com.android.application") apply false
-    id("com.android.library") apply false
+    alias(libs.plugins.agp.lib) apply false
+    alias(libs.plugins.agp.app) apply false
+    alias(lspatch.plugins.kotlin.android) apply false
 }
 
 buildscript {
@@ -19,7 +20,6 @@ buildscript {
     }
     dependencies {
         classpath("org.eclipse.jgit:org.eclipse.jgit:6.3.0.202209071007-r")
-        classpath(kotlin("gradle-plugin", version = "1.7.20"))
     }
 }
 
@@ -52,15 +52,15 @@ val verName by extra("0.5.1")
 val coreVerCode by extra(coreCommitCount)
 val coreVerName by extra(coreLatestTag)
 val androidMinSdkVersion by extra(28)
-val androidTargetSdkVersion by extra(33)
-val androidCompileSdkVersion by extra(33)
-val androidCompileNdkVersion by extra("25.1.8937393")
-val androidBuildToolsVersion by extra("33.0.1")
-val androidSourceCompatibility by extra(JavaVersion.VERSION_11)
-val androidTargetCompatibility by extra(JavaVersion.VERSION_11)
+val androidTargetSdkVersion by extra(34)
+val androidCompileSdkVersion by extra(34)
+val androidCompileNdkVersion by extra("26.1.10909125")
+val androidBuildToolsVersion by extra("34.0.0")
+val androidSourceCompatibility by extra(JavaVersion.VERSION_17)
+val androidTargetCompatibility by extra(JavaVersion.VERSION_17)
 
 tasks.register<Delete>("clean") {
-    delete(rootProject.buildDir)
+    delete(rootProject.layout.buildDirectory)
 }
 
 listOf("Debug", "Release").forEach { variant ->
@@ -163,7 +163,7 @@ fun Project.configureBaseExtension() {
                             "-fno-asynchronous-unwind-tables",
                             "-flto=thin",
                             "-Wl,--thinlto-cache-policy,cache_size_bytes=300m",
-                            "-Wl,--thinlto-cache-dir=${buildDir.absolutePath}/.lto-cache",
+                            "-Wl,--thinlto-cache-dir=${project.layout.buildDirectory.get().asFile.absolutePath}/.lto-cache",
                         )
                         cppFlags.addAll(flags)
                         cFlags.addAll(flags)
@@ -177,7 +177,7 @@ fun Project.configureBaseExtension() {
                                 "-DCMAKE_CXX_FLAGS_RELWITHDEBINFO=$configFlags",
                                 "-DCMAKE_C_FLAGS_RELEASE=$configFlags",
                                 "-DCMAKE_C_FLAGS_RELWITHDEBINFO=$configFlags",
-                                "-DDEBUG_SYMBOLS_PATH=${buildDir.absolutePath}/symbols",
+                                "-DDEBUG_SYMBOLS_PATH=${project.layout.buildDirectory.get().asFile.absolutePath}/symbols",
                             )
                         )
                     }
@@ -198,7 +198,7 @@ fun Project.configureBaseExtension() {
                 "build-tools/${androidBuildToolsVersion}/aapt2"
             )
             val zip = java.nio.file.Paths.get(
-                project.buildDir.path,
+                project.layout.buildDirectory.get().asFile.path,
                 "intermediates",
                 "optimized_processed_res",
                 "release",
@@ -221,7 +221,7 @@ fun Project.configureBaseExtension() {
             }
         }
 
-        tasks.whenTaskAdded {
+        tasks.configureEach {
             if (name == "optimizeReleaseResources") {
                 finalizedBy(optimizeReleaseRes)
             }

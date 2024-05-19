@@ -27,10 +27,11 @@ public class ModuleManager {
     private static boolean moduleLoaded = false;
     private static boolean isInitialized = false;
 
-    public static void init(Context context) {
+    public static void load(Context context) {
         if (ModuleManager.isInitialized) return;
         if (isValid(context) && loadModules(context)) {
             ModuleManager.moduleLoaded = true;
+            Log.i(TAG, "Modules initialized");
         }
         ModuleManager.isInitialized = true;
     }

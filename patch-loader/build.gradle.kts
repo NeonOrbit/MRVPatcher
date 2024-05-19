@@ -1,5 +1,5 @@
 plugins {
-    id("com.android.application")
+    alias(libs.plugins.agp.app)
 }
 
 android {
@@ -10,6 +10,10 @@ android {
                 arguments += "-DCMAKE_OBJECT_PATH_MAX=1024"
             }
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -28,29 +32,29 @@ android {
 }
 
 androidComponents.onVariants { variant ->
-    val variantCapped = variant.name.capitalize()
+    val variantCapped = variant.name.replaceFirstChar { it.uppercase() }
 
     task<Copy>("copyDex$variantCapped") {
         dependsOn("assemble$variantCapped")
         from(if (variant.buildType == "release") {
-            "$buildDir/intermediates/dex/${variant.name}/minify${variantCapped}WithR8"
+            project.layout.buildDirectory.file("intermediates/dex/${variant.name}/minify${variantCapped}WithR8")
         } else {
-            "$buildDir/intermediates/dex/${variant.name}/mergeDex$variantCapped"
+            project.layout.buildDirectory.file("intermediates/dex/${variant.name}/mergeDex$variantCapped")
         })
         rename("classes.dex", "loader")
-        into("${rootProject.projectDir}/out/assets/mrvdata")
+        into("${rootProject.projectDir}/out/assets/${variant.name}/mrvdata")
     }
 
     task<Copy>("copySo$variantCapped") {
         dependsOn("assemble$variantCapped")
         from(
             fileTree(
-                "dir" to "$buildDir/intermediates/stripped_native_libs/${variant.name}/out/lib",
+                "dir" to project.layout.buildDirectory.file("intermediates/stripped_native_libs/${variant.name}/out/lib"),
                 "include" to listOf("**/liblspatch.so")
             )
         )
         rename("liblspatch.so", "liblspatch")
-        into("${rootProject.projectDir}/out/assets/mrvdata/so")
+        into("${rootProject.projectDir}/out/assets/${variant.name}/mrvdata/so")
     }
 
     task("copy$variantCapped") {
@@ -63,6 +67,10 @@ androidComponents.onVariants { variant ->
     }
 }
 
+tasks.getByName("clean").doLast {
+    delete(project.layout.projectDirectory.dir(".cxx"))
+}
+
 dependencies {
     compileOnly(projects.hiddenapi.stubs)
     implementation(projects.core)
@@ -70,6 +78,5 @@ dependencies {
     implementation(projects.services.daemonService)
     implementation(projects.share.android)
     implementation(projects.share.java)
-
-    implementation("com.google.code.gson:gson:2.9.1")
+    implementation(libs.gson)
 }

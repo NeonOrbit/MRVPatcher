@@ -21,6 +21,7 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
+@SuppressWarnings("rawtypes")
 public class PackageMaskHook implements AppInnerHook {
     @Override
     public void load(Context context) {

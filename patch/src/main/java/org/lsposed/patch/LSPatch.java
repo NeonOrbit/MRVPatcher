@@ -62,7 +62,7 @@ import javax.annotation.Nonnull;
 @SuppressWarnings({"FieldCanBeLocal", "FieldMayBeFinal", "ResultOfMethodCallIgnored"})
 public final class LSPatch {
     @SuppressWarnings("unused")
-    static class PatchError extends Error {
+    public static class PatchError extends Error {
         public PatchError(String message, Throwable cause) {
             super(message, cause);
         }
@@ -182,9 +182,11 @@ public final class LSPatch {
     public LSPatch(String... args) {
         jCommander = JCommander.newBuilder().addObject(this).build();
         jCommander.setProgramName("MRVPatcher");
+        jCommander.setExpandAtSign(false);
         jCommander.parse(args);
     }
 
+    @SuppressWarnings("CallToPrintStackTrace")
     public static void main(String... args) {
         var verbose = false;
         try {

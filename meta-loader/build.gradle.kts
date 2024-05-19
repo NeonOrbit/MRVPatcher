@@ -1,9 +1,8 @@
 plugins {
-    id("com.android.application")
+    alias(libs.plugins.agp.app)
 }
 
 android {
-
     defaultConfig {
         multiDexEnabled = false
     }
@@ -18,17 +17,17 @@ android {
 }
 
 androidComponents.onVariants { variant ->
-    val variantCapped = variant.name.capitalize()
-    val variantLowered = variant.name.toLowerCase()
+    val variantCapped = variant.name.replaceFirstChar { it.uppercase() }
+    val variantLowered = variant.name.lowercase()
 
     task<Copy>("copyDex$variantCapped") {
         dependsOn("assemble$variantCapped")
         val dexOutPath = if (variant.buildType == "release")
-            "$buildDir/intermediates/dex/$variantLowered/minify${variantCapped}WithR8" else
-            "$buildDir/intermediates/dex/$variantLowered/mergeDex$variantCapped"
+            project.layout.buildDirectory.file("intermediates/dex/$variantLowered/minify${variantCapped}WithR8") else
+            project.layout.buildDirectory.file("intermediates/dex/$variantLowered/mergeDex$variantCapped")
         from(dexOutPath)
         rename("classes.dex", "metaloader")
-        into("${rootProject.projectDir}/out/assets/mrvdata")
+        into("${rootProject.projectDir}/out/assets/${variant.name}/mrvdata")
     }
 
     task("copy$variantCapped") {

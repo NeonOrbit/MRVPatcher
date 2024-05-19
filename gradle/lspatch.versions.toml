@@ -1,0 +1,15 @@
+[versions]
+kotlin = "1.9.21"
+commons-io = "2.13.0"
+beust-jcommander = "1.82"
+google-gson = "2.10.1"
+
+[plugins]
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+
+[libraries]
+commons-io = { module = "commons-io:commons-io", version.ref = "commons-io" }
+
+beust-jcommander = { module = "com.beust:jcommander", version.ref = "beust-jcommander" }
+
+google-gson = { module = "com.google.code.gson:gson", version.ref = "google-gson" }

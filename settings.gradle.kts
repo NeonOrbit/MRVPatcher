@@ -1,17 +1,10 @@
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
 pluginManagement {
-    val agpVersion: String by settings
     repositories {
         gradlePluginPortal()
         google()
         mavenCentral()
-    }
-    plugins {
-        id("com.android.library") version agpVersion
-        id("com.android.application") version agpVersion
-        id("com.google.devtools.ksp") version "1.7.20-1.0.7"
-        id("dev.rikka.tools.refine") version "3.1.1"
     }
 }
 
@@ -20,6 +13,14 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+    }
+    versionCatalogs {
+        create("libs") {
+            from(files("core/gradle/libs.versions.toml"))
+        }
+        create("lspatch") {
+            from(files("gradle/lspatch.versions.toml"))
+        }
     }
 }
 
@@ -38,6 +39,7 @@ include(
     ":services:xposed-service:interface",
     ":share:android",
     ":share:java",
+    ":core:libxposed-api"
 )
 
 project(":core").projectDir = file("core/core")

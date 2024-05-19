@@ -19,6 +19,7 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 
+@SuppressWarnings("rawtypes")
 public class AppSpecifiedHook implements AppInnerHook {
     private static final Set<String> LINKS = Set.of(
             "m.fb.watch", "www.m.me", "fb.com", "facebook.com", "m.facebook.com",

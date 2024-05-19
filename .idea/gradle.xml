@@ -4,8 +4,6 @@
   <component name="GradleSettings">
     <option name="linkedExternalProjectsSettings">
       <GradleProjectSettings>
-        <option name="testRunner" value="GRADLE" />
-        <option name="distributionType" value="DEFAULT_WRAPPED" />
         <option name="externalProjectPath" value="$PROJECT_DIR$" />
         <option name="gradleJvm" value="#JAVA_HOME" />
         <option name="modules">
@@ -15,6 +13,7 @@
             <option value="$PROJECT_DIR$/core/core" />
             <option value="$PROJECT_DIR$/core/hiddenapi/bridge" />
             <option value="$PROJECT_DIR$/core/hiddenapi/stubs" />
+            <option value="$PROJECT_DIR$/core/libxposed-api" />
             <option value="$PROJECT_DIR$/core/services/daemon-service" />
             <option value="$PROJECT_DIR$/core/services/manager-service" />
             <option value="$PROJECT_DIR$/core/services/xposed-service/interface" />
@@ -30,6 +29,7 @@
             <option value="$PROJECT_DIR$/share/java" />
           </set>
         </option>
+        <option name="resolveExternalAnnotations" value="false" />
       </GradleProjectSettings>
     </option>
   </component>

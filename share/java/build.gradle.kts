@@ -25,9 +25,9 @@ val generateTask = task<Copy>("generateJava") {
     )
     inputs.properties(template)
     from("src/template/java")
-    into("$buildDir/generated/java")
+    into(project.layout.buildDirectory.file("generated/java"))
     expand(template)
 }
 
-sourceSets["main"].java.srcDir("$buildDir/generated/java")
+sourceSets["main"].java.srcDir(project.layout.buildDirectory.file("generated/java"))
 tasks["compileJava"].dependsOn(generateTask)

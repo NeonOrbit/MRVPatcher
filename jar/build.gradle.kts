@@ -50,7 +50,7 @@ fun Jar.configure(variant: String) {
 
     into("assets") {
         from("src/main/assets")
-        from("${rootProject.projectDir}/out/assets")
+        from("${rootProject.projectDir}/out/assets/$variant")
     }
     from(rootProject.projectDir) { include("NOTICE") }
 
@@ -61,17 +61,12 @@ fun Jar.configure(variant: String) {
 }
 
 val proguard = task<ProGuardTask>("proguard")  {
-    tasks.getByName<Jar>("shadowJar").let { shadow ->
-        dependsOn(shadow)
-        injars(shadow.archiveFile)
-        outjars(file("${rootProject.projectDir}/out/${rootProject.name}-${jarVersion}.jar"))
-    }
-    val home = System.getProperty("java.home")
-    if (!JavaVersion.current().isJava9Compatible) {
-        libraryjars("$home/lib/rt.jar")
-    } else {
-        libraryjars(mapOf(Pair("jarfilter", "!**.jar"), Pair("filter", "!module-info.class")), "$home/jmods")
-    }
+    injars(tasks.getByName<Jar>("shadowJar").archiveFile)
+    outjars(file("${rootProject.projectDir}/out/${rootProject.name}-${jarVersion}.jar"))
+    libraryjars(
+        mapOf(Pair("jarfilter", "!**.jar"), Pair("filter", "!module-info.class")),
+        "${System.getProperty("java.home")}/jmods"
+    )
     dontoptimize()
     repackageclasses("mrvp")
     keepattributes("*Annotation*")
@@ -98,21 +93,18 @@ tasks.register<Jar>("buildRelease") {
 tasks.getByName<Jar>("shadowJar") {
     dependsOn(":meta-loader:copyRelease")
     dependsOn(":patch-loader:copyRelease")
-    configure("proguard")
+    configure("release")
 }
 
 tasks.register<Jar>("mrvRelease") {
-    file("${rootProject.projectDir}/out/assets").let {
-        delete(it)
-        if (it.exists()) {
-            throw GradleException("Failed to delete old assets")
+    file("${rootProject.projectDir}/out").let { out ->
+        out.listFiles()?.forEach { delete(it) }
+        if (out.listFiles()?.isNotEmpty() == true) {
+            throw GradleException("Failed to delete old files")
         }
     }
     dependsOn("buildRelease")
     configure("release")
     dependsOn(proguard)
     proguard.mustRunAfter("buildRelease")
-    doLast {
-        delete("${rootProject.projectDir}/out/proguard")
-    }
 }

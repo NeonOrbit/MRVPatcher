@@ -19,8 +19,7 @@ java {
 dependencies {
     implementation(projects.apkzlib)
     implementation(projects.share.java)
-
-    implementation("commons-io:commons-io:2.11.0")
-    implementation("com.beust:jcommander:1.82")
-    implementation("com.google.code.gson:gson:2.9.1")
+    implementation(lspatch.commons.io)
+    implementation(lspatch.beust.jcommander)
+    implementation(lspatch.google.gson)
 }
