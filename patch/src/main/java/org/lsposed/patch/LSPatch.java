@@ -127,7 +127,7 @@ public final class LSPatch {
     @Parameter(names = {"--temp-dir"}, hidden = true, description = "[Internal Option] temp directory path")
     private String internalTempDir = null;
 
-    @Parameter(names = {"-v, --verbose"}, hidden = true, description = "[Internal Option]")
+    @Parameter(names = {"-v", "--verbose"}, hidden = true, description = "[Internal Option] verbose")
     private boolean verbose = false;
 
     private boolean embedSignature = false;
@@ -499,7 +499,7 @@ public final class LSPatch {
         ModificationProperty property = new ModificationProperty();
         property.addUsesPermission("android.permission.QUERY_ALL_PACKAGES");
         property.addApplicationAttribute(new AttributeItem("appComponentFactory", PROXY_APP_COMPONENT_FACTORY));
-        if (minSdk != 0 && minSdk < 28) property.addUsesSdkAttribute(new AttributeItem(NodeValue.UsesSDK.MIN_SDK_VERSION, "28"));
+        if (minSdk != 0 && minSdk < 28) property.addUsesSdkAttribute(new AttributeItem(NodeValue.UsesSDK.MIN_SDK_VERSION, 28));
         if (fixConflict) {
             logger.d("patching issues");
             property.setPermissionMapper((type, permission) -> (type == PermissionType.DECLARED_PERMISSION) ?
