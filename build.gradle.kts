@@ -52,12 +52,12 @@ val verName by extra("0.5.1")
 val coreVerCode by extra(coreCommitCount)
 val coreVerName by extra(coreLatestTag)
 val androidMinSdkVersion by extra(28)
-val androidTargetSdkVersion by extra(34)
-val androidCompileSdkVersion by extra(34)
-val androidCompileNdkVersion by extra("26.1.10909125")
-val androidBuildToolsVersion by extra("34.0.0")
-val androidSourceCompatibility by extra(JavaVersion.VERSION_17)
-val androidTargetCompatibility by extra(JavaVersion.VERSION_17)
+val androidTargetSdkVersion by extra(35)
+val androidCompileSdkVersion by extra(35)
+val androidCompileNdkVersion by extra("27.0.12077973")
+val androidBuildToolsVersion by extra("35.0.0")
+val androidSourceCompatibility by extra(JavaVersion.VERSION_21)
+val androidTargetCompatibility by extra(JavaVersion.VERSION_21)
 
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
@@ -81,7 +81,7 @@ fun Project.configureBaseExtension() {
         buildToolsVersion = androidBuildToolsVersion
 
         externalNativeBuild.cmake {
-            version = "3.22.1+"
+            version = "3.28.1+"
         }
 
         defaultConfig {
@@ -202,6 +202,7 @@ fun Project.configureBaseExtension() {
                 "intermediates",
                 "optimized_processed_res",
                 "release",
+                "optimizeReleaseResources",
                 "resources-release-optimize.ap_"
             )
             val optimized = File("${zip}.opt")

@@ -1,5 +1,5 @@
+cmake_minimum_required(VERSION 3.28)
 project(lspatch)
-cmake_minimum_required(VERSION 3.4.1)
 
 add_subdirectory(${CORE_ROOT} core)
 

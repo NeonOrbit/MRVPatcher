@@ -7,8 +7,8 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("gradle.plugin.com.github.johnrengelman:shadow:7.1.2")
-        classpath("com.guardsquare:proguard-gradle:7.2.1") {
+        classpath("gradle.plugin.com.github.johnrengelman:shadow:8.0.0")
+        classpath("com.guardsquare:proguard-gradle:7.5.0") {
             exclude(group = "com.android.tools.build")
         }
     }

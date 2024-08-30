@@ -49,7 +49,7 @@ androidComponents.onVariants { variant ->
         dependsOn("assemble$variantCapped")
         from(
             fileTree(
-                "dir" to project.layout.buildDirectory.file("intermediates/stripped_native_libs/${variant.name}/out/lib"),
+                "dir" to project.layout.buildDirectory.file("intermediates/stripped_native_libs/${variant.name}/strip${variantCapped}DebugSymbols/out/lib"),
                 "include" to listOf("**/liblspatch.so")
             )
         )
