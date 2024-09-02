@@ -44,6 +44,7 @@ public class AppSignatureHook implements AppInnerHook {
         }
     }
 
+    @SuppressWarnings("rawtypes")
     private static void hookPackageParser(ProxySignatureInfo proxy) {
         XposedBridge.hookAllMethods(PackageParser.class, "generatePackageInfo", new XC_MethodHook() {
             @Override

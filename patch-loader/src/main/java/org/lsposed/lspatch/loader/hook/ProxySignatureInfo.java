@@ -47,18 +47,19 @@ public class ProxySignatureInfo implements Parcelable.Creator<PackageInfo> {
     public void replaceSignature(PackageInfo packageInfo) {
         String replacement;
         String pkg = packageInfo.packageName;
+        String spoof = requester.equals(pkg) ? "self" : pkg;
         if (ConstantsM.isInvalidPackage(pkg) || (replacement = findReplacement(packageInfo)) == null) {
             return;
         }
         if (packageInfo.signatures != null && packageInfo.signatures.length > 0) {
             packageInfo.signatures[0] = new Signature(replacement);
-            Log.i(LSPApplication.TAG, "Signature[" + pkg + "] request from: " + requester);
+            Log.i(LSPApplication.TAG, "Signature[" + requester + " => " + spoof + "]");
         }
         if (packageInfo.signingInfo != null) {
             Signature[] signaturesArray = packageInfo.signingInfo.getApkContentsSigners();
             if (signaturesArray != null && signaturesArray.length > 0) {
                 signaturesArray[0] = new Signature(replacement);
-                Log.i(LSPApplication.TAG, "SigningInfo[" + pkg + "] request from: " + requester);
+                Log.i(LSPApplication.TAG, "SigningInfo[" + requester + " => " + spoof + "]");
             }
         }
     }

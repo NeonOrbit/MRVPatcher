@@ -44,21 +44,21 @@ public class PackageMaskHook implements AppInnerHook {
     }
 
     private static void patchPackageRes(String original, String masked) {
-        XposedHelpers.findAndHookMethod("android.app.ApplicationPackageManager", null, "getPackageInfo", String.class, int.class,
-                new XC_MethodHook() {
-            @Override
+        Class<?> PackageManager = XposedHelpers.findClass("android.app.ApplicationPackageManager", null);
+        XC_MethodHook pkgHook = new XC_MethodHook() {
             protected void beforeHookedMethod(MethodHookParam param) {
-                if (param.args[0].toString().equals(original)) {
+                if (param.args[0] instanceof String && original.equals(param.args[0])) {
                     param.args[0] = masked;
                 }
             }
-        });
+        };
+        XposedBridge.hookAllMethods(PackageManager, "getPackageInfo", pkgHook);
+        XposedBridge.hookAllMethods(PackageManager, "getApplicationInfo", pkgHook);
         XposedHelpers.findAndHookMethod(Resources.class, "getIdentifier", String.class, String.class, String.class, new XC_MethodHook() {
-            @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 String name = (String) param.args[0];
                 String pkg = (String) param.args[2];
-                if (pkg != null && pkg.equals(masked)) {
+                if (masked.equals(pkg)) {
                     param.args[2] = original;
                 } else if (name.startsWith(masked + ":")) {
                     param.args[0] = name.replace(masked, original);
@@ -69,40 +69,32 @@ public class PackageMaskHook implements AppInnerHook {
 
     private static void patchIntents(String original, String masked) {
         XposedBridge.hookAllConstructors(Intent.class, new XC_MethodHook() {
-            @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 Intent intent = (Intent) param.thisObject;
-                if (intent.getPackage() != null && intent.getPackage().equals(original)) {
+                if (original.equals(intent.getPackage())) {
                     intent.setPackage(masked);
                 }
-                if (intent.getComponent() != null && intent.getComponent().getPackageName().equals(original)) {
+                if (intent.getComponent() != null && original.equals(intent.getComponent().getPackageName())) {
                     intent.setComponent(new ComponentName(masked, intent.getComponent().getClassName()));
                 }
             }
         });
-        XposedHelpers.findAndHookMethod(Intent.class, "setPackage", String.class, new XC_MethodHook() {
-            @Override
+        XC_MethodHook pkgHook = new XC_MethodHook() {
             protected void beforeHookedMethod(MethodHookParam param) {
-                if (param.args[0] != null && param.args[0].equals(original)) {
+                if (param.args[0] instanceof String && original.equals(param.args[0])) {
                     param.args[0] = masked;
-                }
-            }
-        });
-        XposedHelpers.findAndHookMethod(Intent.class, "setComponent", ComponentName.class, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) {
-                if (param.args[0] == null) return;
-                ComponentName cmp = (ComponentName) param.args[0];
-                if (cmp.getPackageName().equals(original)) {
+                } else if (param.args[0] instanceof ComponentName cmp && original.equals(cmp.getPackageName())) {
                     param.args[0] = new ComponentName(masked, cmp.getClassName());
                 }
             }
-        });
+        };
+        XposedHelpers.findAndHookMethod(Intent.class, "setPackage", String.class, pkgHook);
+        XposedHelpers.findAndHookMethod(Intent.class, "setClassName", String.class, String.class, pkgHook);
+        XposedHelpers.findAndHookMethod(Intent.class, "setComponent", ComponentName.class, pkgHook);
     }
 
     private void patchAuthority() throws Throwable {
         XC_MethodHook hook = new XC_MethodHook() {
-            @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 if (param.args[0].toString().contains(ConstantsM.VALID_FB_PACKAGE_PREFIX)) {
                     param.setResult(null);
@@ -113,7 +105,6 @@ public class PackageMaskHook implements AppInnerHook {
         XposedBridge.hookAllMethods(ContentResolver.class, "acquireUnstableContentProviderClient", hook);
         var query = ContentResolver.class.getDeclaredMethod("query", Uri.class, String[].class, Bundle.class, CancellationSignal.class);
         XposedBridge.hookMethod(query, new XC_MethodHook() {
-            @Override
             protected void beforeHookedMethod(MethodHookParam param) {
                 try {
                     Uri uri = (Uri) param.args[0];

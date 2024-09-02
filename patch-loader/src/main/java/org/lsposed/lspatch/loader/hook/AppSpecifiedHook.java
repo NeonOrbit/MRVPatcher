@@ -31,10 +31,8 @@ public class AppSpecifiedHook implements AppInnerHook {
     @Override
     public void load(Context context) {
         hotPatchForAccountCenter(context);
-        if (!LSPApplication.config.pkgMasked) {
-            hotPatchForMsgToFbDeepLinking(context);
-            hotPatchForFbToInstDeepLinking(context);
-        }
+        hotPatchForMsgToFbDeepLinking(context);
+        hotPatchForFbToInstDeepLinking(context);
     }
 
     private void hotPatchForAccountCenter(Context context) {
@@ -55,10 +53,9 @@ public class AppSpecifiedHook implements AppInnerHook {
 
     private void hotPatchForMsgToFbDeepLinking(Context context) {
         if (!context.getPackageName().equals("com.facebook.orca")) return;
-        if (!isInstalled(context, "com.facebook.katana")) return;
         hookStartActivity(intent -> {
+            if (!isInstalled(context, "com.facebook.katana")) return;
             if (intent.getData() == null || intent.getData().getHost() == null || intent.getData().getScheme() == null) return;
-            if (intent.getComponent() != null && !intent.getData().toString().contains("/reel/")) return;
             if (LINKS.contains(intent.getData().getHost())) {
                 prepareAndSanitizeIntentForDeepLinking(intent);
                 intent.setComponent(new ComponentName("com.facebook.katana", "com.facebook.katana.IntentUriHandler"));
@@ -69,9 +66,8 @@ public class AppSpecifiedHook implements AppInnerHook {
 
     private void hotPatchForFbToInstDeepLinking(Context context) {
         if (!context.getPackageName().equals("com.facebook.katana")) return;
-        if (!isInstalled(context, "com.instagram.android")) return;
         hookStartActivity(intent -> {
-            if (intent.getComponent() != null) return;
+            if (intent.getComponent() != null || !isInstalled(context, "com.instagram.android")) return;
             if (intent.getData() == null || intent.getData().getHost() == null || intent.getData().getScheme() == null) return;
             if (intent.getData().getScheme().contains("http") && intent.getData().getHost().contains("instagram.com")) {
                 prepareAndSanitizeIntentForDeepLinking(intent);
@@ -97,6 +93,9 @@ public class AppSpecifiedHook implements AppInnerHook {
                 }
                 Intent intent = (Intent) param.args[0];
                 if (intent.getAction() != null && !intent.getAction().equals(Intent.ACTION_VIEW)) return;
+                if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getCategories() == null && intent.getComponent() == null) {
+                    return; // Ignore external
+                }
                 if (intent.getCategories() != null && !intent.getCategories().contains(Intent.CATEGORY_BROWSABLE)) return;
                 if (intent.getComponent() != null && !intent.getComponent().getClassName().toLowerCase().contains("browser")) return;
                 consumer.accept((Intent) param.args[0]);

@@ -2,9 +2,9 @@ package org.lsposed.lspatch.loader.hook;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Handler;
+import android.os.UserHandle;
 
 import org.lsposed.lspatch.share.ConstantsM;
 
@@ -36,12 +36,15 @@ public class PermissionMaskHook implements AppInnerHook {
         );
         var senderHook = new XC_MethodHook() {
             protected void beforeHookedMethod(MethodHookParam param) {
-                if (param.args.length > 1 && param.args[1] instanceof String) {
-                    param.args[1] = ConstantsM.maskFbPackagedString((String) param.args[1]);
+                int index = param.args.length > 2 && param.args[1] instanceof UserHandle ? 2 : param.args.length > 1 ? 1 : -1;
+                if (index > 0 && param.args[index] instanceof String) {
+                    param.args[index] = ConstantsM.maskFbPackagedString((String) param.args[index]);
                 }
             }
         };
+        XposedBridge.hookAllMethods(ContextImpl, "sendBroadcast", senderHook);
+        XposedBridge.hookAllMethods(ContextImpl, "sendBroadcastAsUser", senderHook);
         XposedBridge.hookAllMethods(ContextImpl, "sendOrderedBroadcast", senderHook);
-        XposedHelpers.findAndHookMethod(ContextImpl, "sendBroadcast", Intent.class, String.class, senderHook);
+        XposedBridge.hookAllMethods(ContextImpl, "sendOrderedBroadcastAsUser", senderHook);
     }
 }
