@@ -59,7 +59,7 @@ public class LSPApplication {
 
     @SuppressWarnings("unused")
     public static void onLoad() {
-        Log.i(TAG, "MRV-v5.7.0");
+        Log.i(TAG, "MRV-v5.7.3");
         Log.i(TAG, "Bootstrap: " + ActivityThread.currentProcessName());
         if (isIsolated()) {
             Log.i(TAG, "Skip isolated process");
