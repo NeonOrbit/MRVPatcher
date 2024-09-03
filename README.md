@@ -3,11 +3,12 @@
 MRVPatcher is an APK patching tool that enables you to use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) 
 (along with other Xposed modules) on non-rooted devices.
 
+Supported versions: Android 9 to Android 15  
 Android version of the patcher: [MRVPatchManager](https://github.com/NeonOrbit/MRVPatchManager)
 
 ### Patching Instructions
 - Download the [MRVPatcher](https://github.com/NeonOrbit/MRVPatcher/releases/latest) tool
-- Download and Install [Java JDK 17+](https://adoptium.net/temurin/releases/?variant=openjdk17&jvmVariant=hotspot)
+- Download and Install [Java JDK 21+](https://adoptium.net/temurin/releases/?variant=openjdk21&jvmVariant=hotspot)
 - Download a Messenger APK from [ApkMirror](https://www.apkmirror.com/apk/facebook-2/messenger)
 - Move the Patcher and the APK to a separate folder.
 - Open a terminal (or command prompt) in that folder.
@@ -33,7 +34,7 @@ Usage: MRVPatcher [options] apks
     -p, --patch
       Forcefully patch apps that do not require patching
     --fix-conf
-      Fix apk-conflicts [In case you are unable to remove the preinstalled fb apps]
+      Fix apk-conflict installation issue [In unable to remove the preinstalled fb apps]
     --mask-pkg
       Mask package name [In case you are unable to remove the preinstalled messenger app]
     --sign-only
@@ -41,7 +42,16 @@ Usage: MRVPatcher [options] apks
     --fallback
       Use fallback mode [In case default patched apps do not work]
     --modules
-      Allow third-party modules [package names separated by comma]
+      Allow third-party modules [package names separated by commas]
+Experimental:
+    --no-restriction
+      Remove all patching restrictions (Patch or mask any apps)
+    --load-on-all
+      Load modules for all patched apps (Default: Messenger only)
+    --key-args
+      Pass keystore info in command args [Args order: path pass alias alias-pass]
+    -v, --verbose
+      Verbose output
 ```
 For a detailed explanation, please refer to the [xda thread](https://forum.xda-developers.com/t/4331215).
 
