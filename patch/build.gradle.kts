@@ -22,4 +22,5 @@ dependencies {
     implementation(lspatch.commons.io)
     implementation(lspatch.beust.jcommander)
     implementation(lspatch.google.gson)
+    implementation(lspatch.neonorbit.dexplore)
 }

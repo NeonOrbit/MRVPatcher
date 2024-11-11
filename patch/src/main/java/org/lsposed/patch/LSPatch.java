@@ -396,8 +396,11 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach assets", e);
             }
 
-            var mods = modules.stream().map(String::trim).filter(it -> !it.isBlank()).collect(Collectors.toList());
-            var config = new PatchConfig(appComponent, fallbackMode, fixConflict, maskPackage, loadOnAll, mods);
+            var modules = this.modules.stream().map(String::trim).filter(it -> !it.isBlank()).collect(Collectors.toList());
+            Map<String, List<String>> prefetches = maskPackage ? DexFetcher.prefetch(srcApkFile) : Collections.emptyMap();
+            var config = new PatchConfig(
+                appComponent, fallbackMode, fixConflict, maskPackage, loadOnAll, modules, prefetches
+            );
             var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
             try (var is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);

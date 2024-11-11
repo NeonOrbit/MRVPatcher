@@ -15,7 +15,13 @@ import org.lsposed.lspatch.loader.LSPApplication;
 import org.lsposed.lspatch.loader.ModuleManager;
 import org.lsposed.lspatch.share.ConstantsM;
 
+import java.lang.reflect.Modifier;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -31,6 +37,11 @@ public class PackageMaskHook implements AppInnerHook {
         patchIntents(original, masked);
         try {
             patchAuthority();
+        } catch (Throwable t) {
+            Log.w(LSPApplication.TAG, t.getMessage(), t);
+        }
+        try {
+            patchObfuscated(context, original, masked);
         } catch (Throwable t) {
             Log.w(LSPApplication.TAG, t.getMessage(), t);
         }
@@ -114,6 +125,27 @@ public class PackageMaskHook implements AppInnerHook {
                 } catch (Throwable ignore) { }
             }
         });
+    }
+
+    private static void patchObfuscated(Context context, String original, String masked) {
+        var classes = LSPApplication.config.prefetches.get(ConstantsM.DEX_KEYS.CLS_ORCA_PKG_PROVIDER);
+        List<Class<?>> loaded = classes == null ? Collections.emptyList() : classes.stream().map(
+            c -> XposedHelpers.findClassIfExists(c, context.getClassLoader())
+        ).filter(Objects::nonNull).collect(Collectors.toList());
+        if (!loaded.isEmpty()) {
+            var hook = new XC_MethodHook() {
+                protected void afterHookedMethod(MethodHookParam param) {
+                    if (param.result.equals(original)) param.result = masked;
+                }
+            };
+            loaded.stream().flatMap(c ->
+                Arrays.stream(c.getDeclaredMethods()).filter(m -> Modifier.isStatic(m.getModifiers()) &&
+                    m.getReturnType() == String.class && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class
+                )
+            ).forEach(m -> XposedBridge.hookMethod(m, hook));
+        } else {
+            Log.w(LSPApplication.TAG, "PackageMaskHook: prefetched classes not " + (classes == null ? "exist" : "loaded"));
+        }
     }
 
     private static void patchForChatHeadEnabler(String original, String masked) {

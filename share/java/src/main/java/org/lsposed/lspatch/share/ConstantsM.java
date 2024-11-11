@@ -3,11 +3,14 @@ package org.lsposed.lspatch.share;
 import java.util.Set;
 
 public final class ConstantsM {
+  public static final class DEX_KEYS {
+    public static final String CLS_ORCA_PKG_PROVIDER = "orca-pkg-provider";
+  }
+
   public static final String DEFAULT_TARGET_PACKAGE = "com.facebook.orca";
   public static final String VALID_FB_PACKAGE_PREFIX = "com.facebook.";
   public static final String VALID_IG_PACKAGE_PREFIX = "com.instagram.";
   public static final String VALID_WA_PACKAGE = "com.whatsapp";
-
   public static final String MASK_PREFIX = "mrv.masked.";
 
   public static String maskPackage(String pkg) {
