@@ -44,7 +44,8 @@ public final class ConstantsM {
       "com.facebook.katana",
       "com.facebook.lite",
       "com.facebook.mlite",
-      "com.facebook.pages.app"
+      "com.facebook.pages.app",
+      "com.facebook.adsmanager"
   );
 
   public static final Set<String> DEFAULT_IG_PACKAGES = Set.of(
