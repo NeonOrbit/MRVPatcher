@@ -63,12 +63,12 @@ import javax.annotation.Nonnull;
 public final class LSPatch {
     @SuppressWarnings("unused")
     public static class PatchError extends Error {
-        public PatchError(String message, Throwable cause) {
-            super(message, cause);
+        public PatchError(String message) {
+            super(message);
         }
 
-        PatchError(String message) {
-            super(message);
+        public PatchError(String message, Throwable cause) {
+            super(message, cause);
         }
     }
 
@@ -197,10 +197,11 @@ public final class LSPatch {
         } catch (Throwable t) {
             if (t instanceof CancellationException) {
                 throw ((CancellationException) t);
+            } else if (verbose) {
+                t.printStackTrace();
             } else {
-                logger.e(getError(t));
+                logger.e(getErrorMessage(t));
             }
-            if (verbose) t.printStackTrace();
         }
     }
 
@@ -268,9 +269,13 @@ public final class LSPatch {
                     packageName = pair.packageName;
                     appComponentFactory = pair.appComponentFactory;
                 }
-            } catch (IOException exception) {
-                logger.e(getError(exception));
-                if (multiple) logger.v("Skipping...");
+            } catch (IOException e) {
+                if (multiple) {
+                    logger.e(getErrorMessage(e));
+                    logger.v("Skipping...");
+                } else {
+                    throw new RuntimeException(e);
+                }
                 continue;
             }
 
@@ -326,13 +331,12 @@ public final class LSPatch {
                 }
                 logger.v("Finished");
             } catch (PatchError error) {
-                String err = error.getMessage();
-                if (error.getCause() != null) {
-                    err += " [" + error.getCause().getClass().getSimpleName();
-                    err += " - " + error.getCause().getMessage() + "]";
+                if (multiple) {
+                    logger.e(getErrorMessage(error));
+                    logger.v("Skipping...");
+                } else {
+                    throw error;
                 }
-                logger.e(err);
-                if (multiple) logger.v("Skipping...");
             }
         }
 
@@ -624,8 +628,15 @@ public final class LSPatch {
         } catch (Throwable throwable) { return file.getPath(); }
     }
 
-    private static String getError(Throwable t) {
-        return t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+    private static String getErrorMessage(Throwable t) {
+        String message = t.getMessage();
+        Throwable cause = t.getCause();
+        if (cause != null && cause.getMessage() != null) {
+            if (message == null) message = "";
+            message += " [" + cause.getClass().getSimpleName();
+            message += " - " + cause.getMessage() + "]";
+        }
+        return message != null ? message : t.getClass().getSimpleName();
     }
 
     public static void setOutputLogger(OutputLogger logger) {
