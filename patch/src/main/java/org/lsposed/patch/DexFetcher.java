@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import io.github.neonorbit.dexplore.DexFactory;
 import io.github.neonorbit.dexplore.DexOptions;
@@ -27,7 +28,7 @@ public final class DexFetcher {
         return results;
     }
 
-    // dexplore s base.apk -m m -cdv 'f:public,s:java.lang.Object,i:' -mdv 'f:public+static,r:java.lang.String,p:int' -rt s -ref "com.facebook.orca"
+    // dexplore s base.apk -m m -mdv 'f:public+static,r:java.lang.String,p:int' -rt s -ref "com.facebook.orca"
     private static List<String> orcaPackageConstantProviders(Dexplore dexplore) {
         return dexplore.findMethods(DexFilter.MATCH_ALL,
             ClassFilter.builder()
@@ -43,6 +44,6 @@ public final class DexFetcher {
                 .setReferenceFilter(pool -> pool.stringsContain("com.facebook.orca"))
                 .build(),
             -1
-        ).stream().map(MethodData::getClazz).toList();
+        ).stream().map(MethodData::getClazz).collect(Collectors.toList());
     }
 }
