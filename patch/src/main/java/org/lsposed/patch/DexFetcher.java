@@ -17,6 +17,7 @@ import io.github.neonorbit.dexplore.filter.ClassFilter;
 import io.github.neonorbit.dexplore.filter.DexFilter;
 import io.github.neonorbit.dexplore.filter.MethodFilter;
 import io.github.neonorbit.dexplore.filter.ReferenceTypes;
+import io.github.neonorbit.dexplore.result.ClassData;
 import io.github.neonorbit.dexplore.result.MethodData;
 
 public final class DexFetcher {
@@ -24,11 +25,29 @@ public final class DexFetcher {
         DexOptions options = DexOptions.getDefault(); options.rootDexOnly = true;
         Dexplore dexplore = DexFactory.load(file.getAbsolutePath(), options);
         Map<String, List<String>> results = new HashMap<>();
-        results.put(ConstantsM.DEX_KEYS.CLS_ORCA_PKG_PROVIDER, orcaPackageConstantProviders(dexplore));
+        results.put(ConstantsM.DEX_KEYS.CLS_ORCA_AUTO_BACK_INIT, orcaAutoBackupInit(dexplore));
         return results;
     }
 
-    // dexplore s base.apk -m m -mdv 'f:public+static,r:java.lang.String,p:int' -rt s -ref "com.facebook.orca"
+    // In the masked version, the class constructor throws an exception if context.getPackageName() returns the masked package.
+    //   Solution: Hook getPackageName() to return the original package during the execution of the class constructor.
+    // CMD: dexplore s Messenger.apk -rt sm -ref 'autobackupprefs' 'com.facebook.orca' 'getPackageName' 'java.util.NoSuchElementException'
+    private static List<String> orcaAutoBackupInit(Dexplore dexplore) {
+        return dexplore.findClasses(DexFilter.MATCH_ALL,
+            ClassFilter.builder()
+                .defaultSuperClass().noInterfaces()
+                .setModifiers(Modifier.PUBLIC | Modifier.FINAL)
+                .setReferenceTypes(ReferenceTypes.builder().addString().addMethodWithDetails().build())
+                .setReferenceFilter(pool ->
+                    pool.stringsContain("autobackupprefs") && pool.stringsContain("com.facebook.orca") &&
+                        pool.contains("getPackageName") && pool.contains("java.util.NoSuchElementException")
+                ).build(),
+            1
+        ).stream().map(ClassData::getClazz).collect(Collectors.toList());
+    }
+
+    // dexplore s Messenger.apk -m m -mdv 'f:public+static,r:java.lang.String,p:int' -rt s -ref "com.facebook.orca"
+    @SuppressWarnings("unused")  // ignored
     private static List<String> orcaPackageConstantProviders(Dexplore dexplore) {
         return dexplore.findMethods(DexFilter.MATCH_ALL,
             ClassFilter.builder()

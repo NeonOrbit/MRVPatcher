@@ -5,6 +5,7 @@ import java.util.Set;
 public final class ConstantsM {
   public static final class DEX_KEYS {
     public static final String CLS_ORCA_PKG_PROVIDER = "orca-pkg-provider";
+    public static final String CLS_ORCA_AUTO_BACK_INIT = "orca-auto-back-init";
   }
 
   public static final String DEFAULT_TARGET_PACKAGE = "com.facebook.orca";

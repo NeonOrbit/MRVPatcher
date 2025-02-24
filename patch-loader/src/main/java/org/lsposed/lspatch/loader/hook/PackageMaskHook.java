@@ -15,9 +15,10 @@ import org.lsposed.lspatch.loader.LSPApplication;
 import org.lsposed.lspatch.loader.ModuleManager;
 import org.lsposed.lspatch.share.ConstantsM;
 
-import java.lang.reflect.Modifier;
+import java.lang.reflect.Constructor;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
@@ -128,21 +129,28 @@ public class PackageMaskHook implements AppInnerHook {
     }
 
     private static void patchObfuscated(Context context, String original, String masked) {
-        var classes = LSPApplication.config.prefetches.get(ConstantsM.DEX_KEYS.CLS_ORCA_PKG_PROVIDER);
+        var classes = LSPApplication.config.prefetches.get(ConstantsM.DEX_KEYS.CLS_ORCA_AUTO_BACK_INIT);
         List<Class<?>> loaded = classes == null ? Collections.emptyList() : classes.stream().map(
             c -> XposedHelpers.findClassIfExists(c, context.getClassLoader())
         ).filter(Objects::nonNull).collect(Collectors.toList());
         if (!loaded.isEmpty()) {
+            var ref = new AtomicReference<XC_MethodHook.Unhook>();
             var hook = new XC_MethodHook() {
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    ref.set(XposedHelpers.findAndHookMethod(ContextWrapper.class, "getPackageName", new XC_MethodHook() {
+                        protected void afterHookedMethod(MethodHookParam param) {
+                            if (masked.equals(param.getResult())) param.setResult(original);
+                        }
+                    }));
+                }
                 protected void afterHookedMethod(MethodHookParam param) {
-                    if (param.result.equals(original)) param.result = masked;
+                    var u = ref.get();
+                    if (u != null) u.unhook();
                 }
             };
-            loaded.stream().flatMap(c ->
-                Arrays.stream(c.getDeclaredMethods()).filter(m -> Modifier.isStatic(m.getModifiers()) &&
-                    m.getReturnType() == String.class && m.getParameterCount() == 1 && m.getParameterTypes()[0] == int.class
-                )
-            ).forEach(m -> XposedBridge.hookMethod(m, hook));
+            Arrays.stream(loaded.get(0).getDeclaredConstructors()).min(
+                Comparator.comparingInt(Constructor::getParameterCount)
+            ).ifPresent(c -> XposedBridge.hookMethod(c, hook));
         } else {
             Log.w(LSPApplication.TAG, "PackageMaskHook: prefetched classes not " + (classes == null ? "exist" : "loaded"));
         }
@@ -151,7 +159,6 @@ public class PackageMaskHook implements AppInnerHook {
     private static void patchForChatHeadEnabler(String original, String masked) {
         AtomicReference<XC_MethodHook.Unhook> pkgNameHook = new AtomicReference<>();
         pkgNameHook.set(XposedHelpers.findAndHookMethod(ContextWrapper.class, "getPackageName", new XC_MethodHook() {
-            @Override
             protected void afterHookedMethod(MethodHookParam param) {
                 if (!isCalledFromCHE()) return;
                 String pkg = param.getResult().toString();
@@ -166,7 +173,7 @@ public class PackageMaskHook implements AppInnerHook {
 
     private static boolean isCalledFromCHE() {
         StackTraceElement[] traces = new Throwable().getStackTrace();
-        for (int i = 4; i < Math.min(traces.length, 8); i++) {
+        for (int i = 4; i < Math.min(traces.length, 10); i++) {
             if (traces[i].getClassName().equals("app.neonorbit.chatheadenabler.DataProvider")) return true;
         }
         return false;
