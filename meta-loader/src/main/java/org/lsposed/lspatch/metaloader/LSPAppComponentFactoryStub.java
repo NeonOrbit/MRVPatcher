@@ -1,6 +1,7 @@
 package org.lsposed.lspatch.metaloader;
 
 import android.annotation.SuppressLint;
+import android.app.ActivityThread;
 import android.app.AppComponentFactory;
 import android.util.Log;
 
@@ -10,11 +11,15 @@ import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Method;
 import java.util.Objects;
 
-@SuppressLint("UnsafeDynamicallyLoadedCode")
 public class LSPAppComponentFactoryStub extends AppComponentFactory {
     public static byte[] dex = null;
 
     static {
+        if (ActivityThread.currentActivityThread() != null) loadLsp();
+    }
+
+    @SuppressLint({"DiscouragedPrivateApi", "UnsafeDynamicallyLoadedCode"})
+    private static void loadLsp() {
         var cl = Objects.requireNonNull(LSPAppComponentFactoryStub.class.getClassLoader());
         try (var is = cl.getResourceAsStream(Constants.LOADER_DEX_PATH);
              var os = new ByteArrayOutputStream()) {

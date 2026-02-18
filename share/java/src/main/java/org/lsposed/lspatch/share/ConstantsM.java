@@ -13,6 +13,7 @@ public final class ConstantsM {
   public static final String VALID_IG_PACKAGE_PREFIX = "com.instagram.";
   public static final String VALID_WA_PACKAGE = "com.whatsapp";
   public static final String MASK_PREFIX = "mrv.masked.";
+  public static final String MASK_MARKER = "mrv_masked";
 
   public static String maskPackage(String pkg) {
     return pkg.startsWith(MASK_PREFIX) ? pkg : MASK_PREFIX + pkg;

@@ -14,11 +14,16 @@ import com.android.tools.build.apkzlib.zip.NestedZip;
 import com.android.tools.build.apkzlib.zip.StoredEntry;
 import com.android.tools.build.apkzlib.zip.ZFile;
 import com.android.tools.build.apkzlib.zip.ZFileOptions;
+import com.android.tools.build.apkzlib.zip.compress.DeflateExecutionCompressor;
 import com.beust.jcommander.JCommander;
 import com.beust.jcommander.Parameter;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.wind.meditor.core.ManifestEditor;
 import com.wind.meditor.property.AttributeItem;
 import com.wind.meditor.property.ModificationProperty;
@@ -40,8 +45,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -50,12 +58,17 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
+import java.util.zip.Deflater;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 import javax.annotation.Nonnull;
 
@@ -161,8 +174,8 @@ public final class LSPatch {
         )
     );
 
-    private final static String PATCHED_SUFFIX = "-mrv.apk";
-    private final static String SIGNED_SUFFIX = "-signed.apk";
+    private final static String PATCHED_SUFFIX = "-mrv";
+    private final static String SIGNED_SUFFIX = "-signed";
 
     private KeyStore.PrivateKeyEntry signingKey;
     private static final String DEFAULT_SIGNER_NAME = "facebook";
@@ -251,14 +264,31 @@ public final class LSPatch {
             int minSdk;
             String packageName;
             String appComponentFactory;
+            String xApkBaseName = null;
             try (var zFile = ZFile.openReadOnly(srcApkFile)) {
-                var manifestEntry = zFile.get(ANDROID_MANIFEST_XML);
+                InputStream xApkManifest = null;
+                StoredEntry manifestEntry = zFile.get(ANDROID_MANIFEST_XML);
                 if (manifestEntry == null) {
-                    logger.e("Input file is not a valid apk file");
-                    if (multiple) logger.v("Skipping...");
-                    continue;
+                    StoredEntry xApkBase = findBaseApkFromXApk(zFile);
+                    if (xApkBase != null) {
+                        try (ZipInputStream zis = new ZipInputStream(xApkBase.open())) {
+                            ZipEntry entry;
+                            while ((entry = zis.getNextEntry()) != null) {
+                                if (entry.getName().equals(ANDROID_MANIFEST_XML)) {
+                                    xApkManifest = new ByteArrayInputStream(zis.readAllBytes());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (xApkManifest == null) {
+                        logger.e("Input file is not a valid apk/xapk file");
+                        if (multiple) logger.v("Skipping...");
+                        continue;
+                    }
+                    xApkBaseName = xApkBase.getCentralDirectoryHeader().getName();
                 }
-                try (var is = manifestEntry.open()) {
+                try (var is = (manifestEntry != null ? manifestEntry.open() : xApkManifest)) {
                     var pair = ManifestParser.parseManifestFile(is);
                     if (pair == null || pair.packageName == null || pair.packageName.isEmpty()) {
                         logger.e("Failed to parse Manifest");
@@ -305,9 +335,8 @@ public final class LSPatch {
 
             this.embedSignature = maskPackage || !ConstantsM.isSignatureHardcoded(packageName);
 
-            final File outputFile = (internalOutputPath != null ?
-                new File(internalOutputPath) :
-                new File(outputDir, FilenameUtils.getBaseName(srcFileName) + (signOnly ? SIGNED_SUFFIX : PATCHED_SUFFIX))
+            final File outputFile = (internalOutputPath != null ? new File(internalOutputPath) :
+                new File(outputDir, FilenameUtils.getBaseName(srcFileName) + getOutfileSuffix(srcFileName, signOnly))
             ).getAbsoluteFile();
 
             if (outputFile.exists() && (!forceOverwrite || !outputFile.delete())) {
@@ -322,13 +351,16 @@ public final class LSPatch {
 
             try {
                 var relative = getRelativePath(outputFile);
-                if (signOnly) {
-                    sign(srcApkFile, outputFile);
-                    results.replace(apk, "[rsigned] " + relative);
+                if (xApkBaseName == null) {
+                    if (signOnly) {
+                        sign(srcApkFile, outputFile, packageName);
+                    } else {
+                        patch(srcApkFile, outputFile, packageName, appComponentFactory, minSdk);
+                    }
                 } else {
-                    patch(srcApkFile, outputFile, packageName, appComponentFactory, minSdk);
-                    results.replace(apk, "[patched] " + relative);
+                    patchBundle(srcApkFile, outputFile, xApkBaseName, signOnly, packageName, appComponentFactory, minSdk);
                 }
+                results.replace(apk, (signOnly ? "[rsigned] " : "[patched] ") + relative);
                 logger.v("Finished");
             } catch (PatchError error) {
                 if (multiple) {
@@ -344,6 +376,88 @@ public final class LSPatch {
             logger.v("\nOutput:");
             results.values().stream().sorted().forEach(r -> logger.v(" " + r));
             logger.v("");
+        }
+    }
+
+    public StoredEntry findBaseApkFromXApk(ZFile zFile) {
+        StoredEntry base = null;
+        StoredEntry manifestEntry = zFile.get("manifest.json");
+        if (manifestEntry != null) {
+            try (InputStream is = manifestEntry.open()) {
+                JsonObject json = JsonParser.parseReader(new InputStreamReader(is)).getAsJsonObject();
+                JsonArray splits = json.getAsJsonArray("split_apks");
+                for (JsonElement e : splits) {
+                    if ("base".equals(e.getAsJsonObject().get("id").getAsString())) {
+                        if ((base = zFile.get(e.getAsJsonObject().get("file").getAsString())) != null) {
+                            if (!base.getCentralDirectoryHeader().getName().endsWith(".apk")) base = null;
+                        }
+                        break;
+                    }
+                }
+            } catch (Throwable e) {
+                logger.v("XApk manifest parsing failed: " + e);
+            }
+        }
+        if (base == null) base = zFile.get("base.apk");
+        if (base == null) logger.v("Base apk not found");
+        return base;
+    }
+
+    public void patchBundle(File bundle, File output, String baseName, boolean signOnly, String pkg, String appComponent, int minSdk) throws Exception {
+        logger.d("extracting bundle");
+        File temp = getTempDir(internalTempDir, bundle.getName());
+        try (ZFile src = ZFile.openReadOnly(bundle)) {
+            for (StoredEntry entry : src.entries()) {
+                File out = new File(temp, entry.getCentralDirectoryHeader().getName());
+                out.getParentFile().mkdirs();
+                Files.copy(entry.open(), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        File patchDir = new File(temp, "_mrv_patched_" + System.currentTimeMillis());
+        if (patchDir.exists()) throw new IllegalStateException("Patch dir conflicts!");
+        List<Path> allPaths;
+        try (Stream<Path> walk = Files.walk(temp.toPath())) {
+            allPaths = walk.filter(p -> !Files.isDirectory(p) && !p.toString().contains("META-INF")).toList();
+        }
+        if (!patchDir.mkdirs()) throw new IllegalStateException("Failed to create patch dir!");
+        var baseApk = new File(temp, baseName);
+        if (!baseApk.isFile()) {
+            throw new IllegalStateException("Base apk not found!");
+        }
+        // Patch base apk
+        if (signOnly) {
+            sign(baseApk, new File(patchDir, baseName), pkg);
+        } else {
+            patch(baseApk, new File(patchDir, baseName), pkg, appComponent, minSdk);
+        }
+        logger.d("signing splits");
+        for (Path path : allPaths) {
+            String name = path.toFile().getName();
+            if (name.endsWith(".apk") && !name.equals(baseName)) {
+                File out = new File(patchDir, name);
+                out.getParentFile().mkdirs();
+                sign(path.toFile(), out, pkg, true);
+            }
+        }
+        logger.d("repacking bundle");
+        var compressor = new DeflateExecutionCompressor(Runnable::run, Deflater.BEST_SPEED);
+        try (ZFile dest = ZFile.openReadWrite(output, new ZFileOptions().setCompressor(compressor))) {
+            for (Path path : allPaths) {
+                File file = path.toFile();
+                String name = temp.toPath().relativize(path).toString().replace("\\", "/");
+                if (name.isEmpty()) continue;
+                if (name.endsWith(".apk")) file = new File(patchDir, name);
+                try (FileInputStream fis = new FileInputStream(file)) {
+                    dest.add(name, fis);
+                }
+            }
+            if (maskPackage) {
+                dest.add(ConstantsM.MASK_MARKER, new ByteArrayInputStream(ConstantsM.MASK_MARKER.getBytes(StandardCharsets.UTF_8)));
+            }
+        } finally {
+            try (Stream<Path> walk = Files.walk(temp.toPath())) {
+                walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            } catch (IOException ignored) {}
         }
     }
 
@@ -438,7 +552,7 @@ public final class LSPatch {
                     outputFile.delete();
                     FileUtils.moveFile(internalApk, outputFile);
                 } else {
-                    signApk(internalApk, outputFile);
+                    signApkFileInternal(internalApk, outputFile);
                 }
             } catch (IOException | ApkFormatException | GeneralSecurityException e) {
                 throw new PatchError("Failed to generate apk", e);
@@ -450,7 +564,11 @@ public final class LSPatch {
         }
     }
 
-    public void sign(File srcApkFile, File outputFile) throws PatchError {
+    public void sign(File srcApkFile, File outputFile, String packageName) throws PatchError {
+        sign(srcApkFile, outputFile, packageName, false);
+    }
+
+    public void sign(File srcApkFile, File outputFile, String packageName, boolean silent) throws PatchError {
         File internalApk;
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
@@ -461,10 +579,10 @@ public final class LSPatch {
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
             if (fixConflict) {
-                logger.d("patching issues");
                 try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS); var srcZFile = ZFile.openReadOnly(srcApkFile)) {
                     try (var is = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML)).open()) {
-                        dstZFile.add(ANDROID_MANIFEST_XML, new ByteArrayInputStream(patchApkConflicts(is)));
+                        var patched = patchApkConflicts(is, packageName, silent);
+                        dstZFile.add(ANDROID_MANIFEST_XML, new ByteArrayInputStream(patched));
                     } catch (IOException e) {
                         throw new PatchError("Failed to patch manifest", e);
                     }
@@ -473,9 +591,9 @@ public final class LSPatch {
                     throw new PatchError("Failed to patch apk", e);
                 }
             }
-            logger.d("signing apk");
+            if (!silent) logger.d("signing apk");
             if (fixConflict || !fallbackMode) {
-                signApk(internalApk, outputFile);
+                signApkFileInternal(internalApk, outputFile);
             } else {
                 try (var dstZFile = ZFile.openReadWrite(internalApk)) {
                     registerApkSigner(dstZFile);
@@ -492,13 +610,23 @@ public final class LSPatch {
         }
     }
 
-    private byte[] patchApkConflicts(InputStream is) throws IOException {
+    private byte[] patchApkConflicts(InputStream is, String pkg, boolean silent) throws IOException {
         var os = new ByteArrayOutputStream();
-        new ManifestEditor(is, os, new ModificationProperty()
-                .setPermissionMapper((type, permission) -> (type == PermissionType.DECLARED_PERMISSION) ?
-                        ConstantsM.maskPackagedString(permission) : ConstantsM.maskFbPackagedString(permission)
-                )
-        ).processManifest();
+        var property = new ModificationProperty();
+        if (fixConflict) {
+            if (!silent) logger.d("patching issues");
+            property.setPermissionMapper((type, permission) -> (type == PermissionType.DECLARED_PERMISSION) ?
+                ConstantsM.maskPackagedString(permission) : ConstantsM.maskFbPackagedString(permission)
+            );
+        }
+        if (maskPackage) {
+            if (!silent) logger.d("masking package");
+            property.addManifestAttribute(
+                new AttributeItem(NodeValue.Manifest.PACKAGE, ConstantsM.maskPackage(pkg)).setNamespace(null)
+            );
+            property.setAuthorityMapper(ConstantsM::maskPackagedString);
+        }
+        new ManifestEditor(is, os, property).processManifest();
         return os.toByteArray();
     }
 
@@ -573,7 +701,7 @@ public final class LSPatch {
         if (signingKey == null) throw new KeyStoreException("Keystore entry not found: " + keyAlias);
     }
 
-    private void signApk(File srcApkFile, File outputFile) throws IOException, ApkFormatException, GeneralSecurityException {
+    private void signApkFileInternal(File srcApkFile, File outputFile) throws IOException, ApkFormatException, GeneralSecurityException {
         List<X509Certificate> cert = Arrays.asList((X509Certificate[]) signingKey.getCertificateChain());
         var config = new ApkSigner.SignerConfig.Builder(DEFAULT_SIGNER_NAME, signingKey.getPrivateKey(), cert).build();
         new ApkSigner.Builder(Collections.singletonList(config))
@@ -620,6 +748,16 @@ public final class LSPatch {
     private static File getTempFile(String dir, String name) throws IOException {
         return dir == null ? Files.createTempFile("mrv-" + name, "-internal").toFile() :
             Files.createTempFile(new File(dir).toPath(), "mrv-" + name, "-internal").toFile() ;
+    }
+
+    private static File getTempDir(String dir, String name) throws IOException {
+        return dir == null ? Files.createTempDirectory("mrv-" + name).toFile() :
+            Files.createTempDirectory(new File(dir).toPath(), "mrv-" + name).toFile() ;
+    }
+
+    private static String getOutfileSuffix(String name, boolean signOnly) {
+        return (signOnly ? SIGNED_SUFFIX : PATCHED_SUFFIX) +
+            (name.contains(".") ? name.substring(name.lastIndexOf('.')) : "");
     }
 
     private static String getRelativePath(File file) {
