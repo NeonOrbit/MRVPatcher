@@ -60,9 +60,11 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
@@ -182,6 +184,26 @@ public final class LSPatch {
     private static final String DEFAULT_SIGNER_NAME = "facebook";
     private static final char[] DEFAULT_KEYPASS = "123456".toCharArray();
 
+    private boolean internal = false;
+    private Set<File> TEMPORARY_FILES_CLEANUP = new HashSet<>();
+
+    private void registerCleanupHook() {
+        if (!internal) {
+            try {
+                Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                    if (!TEMPORARY_FILES_CLEANUP.isEmpty()) {
+                        TEMPORARY_FILES_CLEANUP.forEach((f) -> {
+                            if (f.isFile()) f.delete();
+                            try (Stream<Path> walk = Files.walk(f.toPath())) {
+                                walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+                            } catch (IOException ignored) {}
+                        });
+                    }
+                }));
+            } catch (Exception ignored) {}
+        }
+    }
+
     private static OutputLogger logger = new OutputLogger() {
         @Override
         public void v(@Nonnull String msg) { System.out.println(msg); }
@@ -220,6 +242,7 @@ public final class LSPatch {
     }
 
     public void doCommandLine() throws Exception {
+        registerCleanupHook();
         if (help) {
             jCommander.usage();
             return;
@@ -406,6 +429,7 @@ public final class LSPatch {
 
     public void patchBundle(File bundle, File output, String baseName, boolean signOnly, String pkg, String appComponent, int minSdk) throws Exception {
         File temp = getTempDir(internalTempDir, bundle.getName());
+        TEMPORARY_FILES_CLEANUP.add(temp);
         try (var executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1)) {
             logger.d("extracting bundle");
             ZipHelpers.fastExtract(bundle, temp, executor);
@@ -457,6 +481,7 @@ public final class LSPatch {
             try (Stream<Path> walk = Files.walk(temp.toPath())) {
                 walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException ignored) {}
+            TEMPORARY_FILES_CLEANUP.remove(temp);
         }
     }
 
@@ -469,6 +494,7 @@ public final class LSPatch {
             if (!fallbackMode) {
                 FileUtils.copyFile(srcApkFile, internalApk);
             }
+            TEMPORARY_FILES_CLEANUP.add(internalApk);
         } catch (IOException e) {
             throw new PatchError("Failed to create temp file", e);
         }
@@ -560,6 +586,7 @@ public final class LSPatch {
             throw new PatchError("Failed to patch apk", e);
         } finally {
             internalApk.delete();
+            TEMPORARY_FILES_CLEANUP.remove(internalApk);
         }
     }
 
@@ -572,6 +599,7 @@ public final class LSPatch {
         try {
             internalApk = getTempFile(internalTempDir, srcApkFile.getName());
             internalApk.delete();
+            TEMPORARY_FILES_CLEANUP.add(internalApk);
         } catch (IOException e) {
             throw new PatchError("Failed to create temp file", e);
         }
@@ -606,6 +634,7 @@ public final class LSPatch {
             throw new PatchError("Failed to sign apk", e);
         } finally {
             internalApk.delete();
+            TEMPORARY_FILES_CLEANUP.remove(internalApk);
         }
     }
 
