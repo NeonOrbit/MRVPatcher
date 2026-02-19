@@ -5,7 +5,7 @@ import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.internal.storage.file.FileRepository
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 
-val jarVersion by extra("5.7.4")
+val jarVersion by extra("5.7.7")
 
 plugins {
     alias(libs.plugins.agp.lib) apply false

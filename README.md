@@ -3,7 +3,7 @@
 MRVPatcher is an APK patching tool that enables you to use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) 
 (along with other Xposed modules) on non-rooted devices.
 
-Supported versions: Android 9 to Android 15  
+Supported versions: Android 9 to Android 16+  
 Android version of the patcher: [MRVPatchManager](https://github.com/NeonOrbit/MRVPatchManager)
 
 ### Patching Instructions
