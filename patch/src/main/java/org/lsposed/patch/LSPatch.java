@@ -143,6 +143,9 @@ public final class LSPatch {
     @Parameter(names = {"--temp-dir"}, hidden = true, description = "[Internal Option] temp directory path")
     private String internalTempDir = null;
 
+    @Parameter(names = {"--internal-patch"}, hidden = true, description = "[Internal Option] set by mrv-patch-manager")
+    private boolean internal = false;
+
     @Parameter(names = {"-v", "--verbose"}, hidden = true, description = "[Internal Option] verbose")
     private boolean verbose = false;
 
@@ -184,7 +187,6 @@ public final class LSPatch {
     private static final String DEFAULT_SIGNER_NAME = "facebook";
     private static final char[] DEFAULT_KEYPASS = "123456".toCharArray();
 
-    private boolean internal = false;
     private Set<File> TEMPORARY_FILES_CLEANUP = new HashSet<>();
 
     private void registerCleanupHook() {
@@ -432,7 +434,9 @@ public final class LSPatch {
         TEMPORARY_FILES_CLEANUP.add(temp);
         try (var executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1)) {
             logger.d("extracting bundle");
-            ZipHelpers.fastExtract(bundle, temp, executor);
+            ZipHelpers.fastExtract(bundle, temp, executor, (size) -> {
+                if (internal && size > 100_000) logger.d("extracting bundle");  // simulate yield signal
+            });
             File patchDir = new File(temp, "_mrv_patched_" + System.currentTimeMillis());
             if (patchDir.exists()) {
                 throw new IllegalStateException("Patch dir conflicts!");
@@ -469,6 +473,7 @@ public final class LSPatch {
                     String name = temp.toPath().relativize(path).toString().replace("\\", "/");
                     if (name.isEmpty()) continue;
                     if (name.endsWith(".apk")) file = new File(patchDir, name);
+                    if (internal && file.length() > 10_000) logger.d("repacking bundle");  // yield
                     try (FileInputStream fis = new FileInputStream(file)) {
                         dest.add(name, fis);
                     }

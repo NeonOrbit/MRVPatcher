@@ -10,12 +10,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import java.util.zip.ZipFile;
 
 public class ZipHelpers {
     private static final int BUFFER_SIZE = 128 * 1024;
 
-    public static void fastExtract(File file, File dest, ExecutorService executor) throws IOException {
+    public static void fastExtract(File file, File dest, ExecutorService executor, Consumer<Long> update) throws IOException {
         var aborted = new AtomicBoolean(false);
         var futures = new ArrayList<CompletableFuture<?>>();
         try (ZipFile zip = new ZipFile(file)) {
@@ -29,6 +30,7 @@ public class ZipHelpers {
                 }
                 futures.add(CompletableFuture.runAsync(() -> {
                     if (aborted.get() || Thread.interrupted()) return;
+                    update.accept(entry.getSize());
                     try {
                         File out = new File(dest, entry.getName());
                         out.getParentFile().mkdirs();
