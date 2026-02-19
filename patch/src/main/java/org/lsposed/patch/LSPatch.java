@@ -38,6 +38,7 @@ import org.lsposed.lspatch.share.ExtraConfig;
 import org.lsposed.lspatch.share.PatchConfig;
 import org.lsposed.patch.util.ApkSignatureHelper;
 import org.lsposed.patch.util.ManifestParser;
+import org.lsposed.patch.util.ZipHelpers;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -49,7 +50,6 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
@@ -64,6 +64,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.zip.Deflater;
@@ -404,55 +405,53 @@ public final class LSPatch {
     }
 
     public void patchBundle(File bundle, File output, String baseName, boolean signOnly, String pkg, String appComponent, int minSdk) throws Exception {
-        logger.d("extracting bundle");
         File temp = getTempDir(internalTempDir, bundle.getName());
-        try (ZFile src = ZFile.openReadOnly(bundle)) {
-            for (StoredEntry entry : src.entries()) {
-                File out = new File(temp, entry.getCentralDirectoryHeader().getName());
-                out.getParentFile().mkdirs();
-                Files.copy(entry.open(), out.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        try (var executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1)) {
+            logger.d("extracting bundle");
+            ZipHelpers.fastExtract(bundle, temp, executor);
+            File patchDir = new File(temp, "_mrv_patched_" + System.currentTimeMillis());
+            if (patchDir.exists()) {
+                throw new IllegalStateException("Patch dir conflicts!");
             }
-        }
-        File patchDir = new File(temp, "_mrv_patched_" + System.currentTimeMillis());
-        if (patchDir.exists()) throw new IllegalStateException("Patch dir conflicts!");
-        List<Path> allPaths;
-        try (Stream<Path> walk = Files.walk(temp.toPath())) {
-            allPaths = walk.filter(p -> !Files.isDirectory(p) && !p.toString().contains("META-INF")).toList();
-        }
-        if (!patchDir.mkdirs()) throw new IllegalStateException("Failed to create patch dir!");
-        var baseApk = new File(temp, baseName);
-        if (!baseApk.isFile()) {
-            throw new IllegalStateException("Base apk not found!");
-        }
-        // Patch base apk
-        if (signOnly) {
-            sign(baseApk, new File(patchDir, baseName), pkg);
-        } else {
-            patch(baseApk, new File(patchDir, baseName), pkg, appComponent, minSdk);
-        }
-        logger.d("signing splits");
-        for (Path path : allPaths) {
-            String name = path.toFile().getName();
-            if (name.endsWith(".apk") && !name.equals(baseName)) {
-                File out = new File(patchDir, name);
-                out.getParentFile().mkdirs();
-                sign(path.toFile(), out, pkg, true);
+            List<Path> allPaths;
+            try (Stream<Path> walk = Files.walk(temp.toPath())) {
+                allPaths = walk.filter(p -> !Files.isDirectory(p) && !p.toString().contains("META-INF")).toList();
             }
-        }
-        logger.d("repacking bundle");
-        var compressor = new DeflateExecutionCompressor(Runnable::run, Deflater.BEST_SPEED);
-        try (ZFile dest = ZFile.openReadWrite(output, new ZFileOptions().setCompressor(compressor))) {
+            if (!patchDir.mkdirs()) throw new IllegalStateException("Failed to create patch dir!");
+            var baseApk = new File(temp, baseName);
+            if (!baseApk.isFile()) {
+                throw new IllegalStateException("Base apk not found!");
+            }
+            // Patch base apk
+            if (signOnly) {
+                sign(baseApk, new File(patchDir, baseName), pkg);
+            } else {
+                patch(baseApk, new File(patchDir, baseName), pkg, appComponent, minSdk);
+            }
+            logger.d("signing splits");
             for (Path path : allPaths) {
-                File file = path.toFile();
-                String name = temp.toPath().relativize(path).toString().replace("\\", "/");
-                if (name.isEmpty()) continue;
-                if (name.endsWith(".apk")) file = new File(patchDir, name);
-                try (FileInputStream fis = new FileInputStream(file)) {
-                    dest.add(name, fis);
+                String name = path.toFile().getName();
+                if (name.endsWith(".apk") && !name.equals(baseName)) {
+                    File out = new File(patchDir, name);
+                    out.getParentFile().mkdirs();
+                    sign(path.toFile(), out, pkg, true);
                 }
             }
-            if (maskPackage) {
-                dest.add(ConstantsM.MASK_MARKER, new ByteArrayInputStream(ConstantsM.MASK_MARKER.getBytes(StandardCharsets.UTF_8)));
+            logger.d("repacking bundle");
+            var compressor = new DeflateExecutionCompressor(executor, Deflater.BEST_SPEED);
+            try (ZFile dest = ZFile.openReadWrite(output, new ZFileOptions().setCompressor(compressor))) {
+                for (Path path : allPaths) {
+                    File file = path.toFile();
+                    String name = temp.toPath().relativize(path).toString().replace("\\", "/");
+                    if (name.isEmpty()) continue;
+                    if (name.endsWith(".apk")) file = new File(patchDir, name);
+                    try (FileInputStream fis = new FileInputStream(file)) {
+                        dest.add(name, fis);
+                    }
+                }
+                if (maskPackage) {
+                    dest.add(ConstantsM.MASK_MARKER, new ByteArrayInputStream(ConstantsM.MASK_MARKER.getBytes(StandardCharsets.UTF_8)));
+                }
             }
         } finally {
             try (Stream<Path> walk = Files.walk(temp.toPath())) {
