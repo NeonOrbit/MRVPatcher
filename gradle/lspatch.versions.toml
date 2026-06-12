@@ -1,8 +1,8 @@
 [versions]
-kotlin = "1.9.21"
-commons-io = "2.13.0"
+kotlin = "2.2.21"
+commons-io = "2.20.0"
 beust-jcommander = "1.82"
-google-gson = "2.10.1"
+google-gson = "2.13.1"
 neonorbit-dexplore = "1.4.5"
 
 [plugins]

@@ -9,13 +9,7 @@ import org.lsposed.lspatch.loader.hook.AppSpecifiedHook;
 import org.lsposed.lspatch.loader.hook.PackageMaskHook;
 import org.lsposed.lspatch.loader.hook.PermissionMaskHook;
 import org.lsposed.lspatch.share.ConstantsM;
-import org.lsposed.lspd.core.ApplicationServiceClient;
 import org.lsposed.lspd.core.Startup;
-import org.lsposed.lspd.deopt.PrebuiltMethodsDeopter;
-import org.lsposed.lspd.impl.LSPosedContext;
-import org.lsposed.lspd.service.ILSPApplicationService;
-
-import java.lang.reflect.Method;
 
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedInit;
@@ -26,18 +20,10 @@ public class LSPLoader {
         var service = new LSPAppService();
         var process = ActivityThread.currentProcessName();
         var dataDir = context.getApplicationInfo().dataDir;
-        try {
-            Method init = ApplicationServiceClient.class.getDeclaredMethod(
-                "Init", ILSPApplicationService.class, String.class
-            );
-            init.setAccessible(true);
-            init.invoke(null, service, process);
-            LSPosedContext.appDir = dataDir;
-            LSPosedContext.processName = process;
-            PrebuiltMethodsDeopter.deoptBootMethods();
-        } catch (ReflectiveOperationException | SecurityException e) {
-            Startup.initXposed(false, process, dataDir, service);
-        }
+        try {  // Bypass initXResources
+            XposedBridge.dummyClassLoader = new ClassLoader() {};
+        } catch (Throwable ignored) {}
+        Startup.initXposed(false, process, dataDir, service);
         XposedInit.disableResources = true;
         XposedInit.loadedPackagesInProcess.add(context.getPackageName());
     }

@@ -19,7 +19,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath("org.eclipse.jgit:org.eclipse.jgit:6.3.0.202209071007-r")
+        classpath("org.eclipse.jgit:org.eclipse.jgit:7.3.0.202506031305-r")
     }
 }
 
@@ -44,23 +44,23 @@ val (coreCommitCount, coreLatestTag) = FileRepositoryBuilder().setGitDir(rootPro
         }
     }.getOrNull() ?: (1 to "1.0")
 
-// sync from https://github.com/LSPosed/LSPosed/blob/master/build.gradle.kts
+// sync from https://github.com/JingMatrix/Vector/blob/master/build.gradle.kts
 val defaultManagerPackageName by extra("org.lsposed.lspatch")
 val apiCode by extra(93)
 val verCode by extra(commitCount)
-val verName by extra("0.5.1")
+val verName by extra("0.8")
 val coreVerCode by extra(coreCommitCount)
 val coreVerName by extra(coreLatestTag)
 val androidMinSdkVersion by extra(28)
-val androidTargetSdkVersion by extra(35)
-val androidCompileSdkVersion by extra(35)
-val androidCompileNdkVersion by extra("27.0.12077973")
-val androidBuildToolsVersion by extra("35.0.0")
+val androidTargetSdkVersion by extra(36)
+val androidCompileSdkVersion by extra(36)
+val androidCompileNdkVersion by extra("29.0.13113456")
+val androidBuildToolsVersion by extra("36.0.0")
 val androidSourceCompatibility by extra(JavaVersion.VERSION_21)
 val androidTargetCompatibility by extra(JavaVersion.VERSION_21)
 
 tasks.register<Delete>("clean") {
-    delete(rootProject.layout.buildDirectory)
+    delete(layout.buildDirectory)
 }
 
 listOf("Debug", "Release").forEach { variant ->
@@ -82,6 +82,7 @@ fun Project.configureBaseExtension() {
 
         externalNativeBuild.cmake {
             version = "3.28.1+"
+            buildStagingDirectory = layout.buildDirectory.get().asFile
         }
 
         defaultConfig {
@@ -122,7 +123,7 @@ fun Project.configureBaseExtension() {
                     cppFlags("-std=c++20", *flags)
                     cFlags("-std=c18", *flags)
                     arguments(
-                        "-DANDROID_STL=none",
+                        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
                         "-DVERSION_CODE=$verCode",
                         "-DVERSION_NAME=$verName",
                     )

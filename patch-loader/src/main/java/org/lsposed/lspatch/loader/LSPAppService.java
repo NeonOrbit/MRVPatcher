@@ -3,6 +3,7 @@ package org.lsposed.lspatch.loader;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.os.RemoteException;
 
 import org.lsposed.lspd.models.Module;
 import org.lsposed.lspd.service.ILSPApplicationService;
@@ -13,6 +14,11 @@ import java.util.List;
 
 public class LSPAppService extends ILSPApplicationService.Stub {
     public LSPAppService() {}
+
+    @Override
+    public boolean isLogMuted() throws RemoteException {
+        return false;
+    }
 
     @Override
     public List<Module> getLegacyModulesList() {

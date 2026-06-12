@@ -20,45 +20,53 @@
 #ifndef LSPATCH_OAT_FILE_MANAGER_H
 #define LSPATCH_OAT_FILE_MANAGER_H
 
+#include <vector>
+
 #include "context.h"
 #include "utils/hook_helper.hpp"
 
 using namespace lsplant;
 
 namespace art {
-    CREATE_MEM_HOOK_STUB_ENTRY(
-            "_ZN3art14OatFileManager25RunBackgroundVerificationERKNSt3__16vectorIPKNS_7DexFileENS1_9allocatorIS5_EEEEP8_jobjectPKc",
-            void, RunBackgroundVerificationWithContext,
-            (void * thiz, const std::vector<const void *> &dex_files,
-                    jobject class_loader,
-                    const char *class_loader_context), {
-                if (lspd::Context::GetInstance()->GetCurrentClassLoader() == nullptr) {
-                    LOGD("Disabled background verification");
-                    return;
-                }
-                backup(thiz, dex_files, class_loader, class_loader_context);
-            });
+    class FileManager {
+    public:
+        inline static auto RunBackgroundVerificationWithContext_ =
+                ("_ZN3art14OatFileManager25RunBackgroundVerificationERKNSt3__"_sym |
+                 "16vectorIPKNS_7DexFileENS1_9allocatorIS5_EEEEP8_jobjectPKc"_sym)
+                        .hook
+                ->*[]<MemBackup auto backup>(
+                        FileManager *thiz, const std::vector<const void *> &dex_files,
+                        jobject class_loader, const char *class_loader_context) static -> void {
+                    if (lspd::Context::GetInstance()->GetCurrentClassLoader() == nullptr) {
+                        LOGD("Disabled background verification");
+                        return;
+                    }
+                    backup(thiz, dex_files, class_loader, class_loader_context);
+                };
 
-    CREATE_MEM_HOOK_STUB_ENTRY(
-            "_ZN3art14OatFileManager25RunBackgroundVerificationERKNSt3__16vectorIPKNS_7DexFileENS1_9allocatorIS5_EEEEP8_jobject",
-            void, RunBackgroundVerification,
-            (void * thiz, const std::vector<const void *> &dex_files,
-                    jobject class_loader), {
-                if (lspd::Context::GetInstance()->GetCurrentClassLoader() == nullptr) {
-                    LOGD("Disabled background verification");
-                    return;
-                }
-                backup(thiz, dex_files, class_loader);
-            });
+        inline static auto RunBackgroundVerification_ =
+                ("_ZN3art14OatFileManager25RunBackgroundVerificationERKNSt3__"_sym |
+                 "16vectorIPKNS_7DexFileENS1_9allocatorIS5_EEEEP8_jobject"_sym)
+                        .hook
+                ->*
+                []<MemBackup auto backup>(FileManager *thiz, const std::vector<const void *> &dex_files,
+                                          jobject class_loader) static -> void {
+                    if (lspd::Context::GetInstance()->GetCurrentClassLoader() == nullptr) {
+                        LOGD("Disabled background verification");
+                        return;
+                    }
+                    backup(thiz, dex_files, class_loader);
+                };
 
-
-    static void DisableBackgroundVerification(const lsplant::HookHandler &handler) {
-        const int api_level = lspd::GetAndroidApiLevel();
-        if (api_level >= __ANDROID_API_Q__) {
-            HookSyms(handler, RunBackgroundVerificationWithContext, RunBackgroundVerification);
+    public:
+        static void DisableBackgroundVerification(const lsplant::HookHandler &handler) {
+            const int api_level = lspd::GetAndroidApiLevel();
+            if (api_level >= __ANDROID_API_Q__) {
+                handler(RunBackgroundVerificationWithContext_);
+                handler(RunBackgroundVerification_);
+            }
         }
-    }
-}
+    };
+}  // namespace art
 
-
-#endif //LSPATCH_OAT_FILE_MANAGER_H
+#endif  // LSPATCH_OAT_FILE_MANAGER_H

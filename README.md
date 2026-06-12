@@ -1,23 +1,25 @@
 # MRVPatcher
 
-MRVPatcher is an APK patching tool that enables you to use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler) 
-(along with other Xposed modules) on non-rooted devices.
+MRVPatcher is an APK patching tool that lets you use [ChatHeadEnabler](https://github.com/NeonOrbit/ChatHeadEnabler)
+in Messenger (along with other Xposed modules), on non-rooted devices.
 
-Supported versions: Android 9 to Android 16+  
-Android version of the patcher: [MRVPatchManager](https://github.com/NeonOrbit/MRVPatchManager)
+Supported Android versions: 9 to 17+  
+Android app alternative: [MRVPatchManager](https://github.com/NeonOrbit/MRVPatchManager)
 
 ### Patching Instructions
+- Download and Install [JDK 21+](https://adoptium.net/temurin/releases/?version=21)
 - Download the [MRVPatcher](https://github.com/NeonOrbit/MRVPatcher/releases/latest) tool
-- Download and Install [Java JDK 21+](https://adoptium.net/temurin/releases/?variant=openjdk21&jvmVariant=hotspot)
+- Rename the tool to `MRVPatcher.jar`
 - Download a Messenger APK from [ApkMirror](https://www.apkmirror.com/apk/facebook-2/messenger)
-- Move the Patcher and the APK to a separate folder.
+- Rename the APK to `Messenger.apk`
+- Place the patcher and APK in the same folder.
 - Open a terminal (or command prompt) in that folder.
 - Run the following command:
 ```shell
 java -jar MRVPatcher.jar Messenger.apk
 ```
-- A new file named "Messenger-mrv.apk" will be generated.
-- Repeat these steps for other Facebook apps as well.
+- A patched file named "Messenger-mrv.apk" will be created.
+- Repeat the same steps for any other Facebook apps you want to patch.
 
 List of available options:
 ```
@@ -34,7 +36,7 @@ Usage: MRVPatcher [options] apks
     -p, --patch
       Forcefully patch apps that do not require patching
     --fix-conf
-      Fix apk-conflict installation issue [In unable to remove the preinstalled fb apps]
+      Fix apk-conflict installation issue [If unable to remove the preinstalled fb apps]
     --mask-pkg
       Mask package name [In case you are unable to remove the preinstalled messenger app]
     --sign-only
@@ -45,7 +47,7 @@ Usage: MRVPatcher [options] apks
       Allow third-party modules [package names separated by commas]
 Experimental:
     --no-restriction
-      Remove all patching restrictions (Patch or mask any apps)
+      Remove patching restrictions (Patch or mask any apps)
     --load-on-all
       Load modules for all patched apps (Default: Messenger only)
     --key-args
@@ -57,7 +59,10 @@ For a detailed explanation, please refer to the [xda thread](https://forum.xda-d
 
 ## Credits
 
-- Based on LSPatch
+- LSPatch from LSPosed
+- Vector from JingMatrix
+- ManifestEditor from WindySha
+- Apksigner and Apkzlib from AOSP
 
 ## License
 

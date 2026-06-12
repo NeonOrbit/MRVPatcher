@@ -15,11 +15,15 @@ public class LSPAppComponentFactoryStub extends AppComponentFactory {
     public static byte[] dex = null;
 
     static {
-        if (ActivityThread.currentActivityThread() != null) loadLsp();
+        if (ActivityThread.currentActivityThread() != null) {
+            bootstrap();
+        } else {
+            Log.i(Constants.TAG, "Skip meta-loader for app zygote");
+        }
     }
 
     @SuppressLint({"DiscouragedPrivateApi", "UnsafeDynamicallyLoadedCode"})
-    private static void loadLsp() {
+    private static void bootstrap() {
         var cl = Objects.requireNonNull(LSPAppComponentFactoryStub.class.getClassLoader());
         try (var is = cl.getResourceAsStream(Constants.LOADER_DEX_PATH);
              var os = new ByteArrayOutputStream()) {
@@ -40,8 +44,10 @@ public class LSPAppComponentFactoryStub extends AppComponentFactory {
             Method vmInstructionSet = VMRuntime.getDeclaredMethod("vmInstructionSet");
             vmInstructionSet.setAccessible(true);
             String arch = (String) vmInstructionSet.invoke(getRuntime.invoke(null));
-            String path = cl.getResource(Constants.getLibrarySoPath(arch)).getPath().substring(5);
-            System.load(path);
+            String resource = cl.getResource(Constants.getLibrarySoPath(arch)).getPath();
+            String[] parts = resource.split("file:");
+            String lib = parts[parts.length - 1];
+            System.load(lib);
         } catch (Throwable e) {
             Log.e(Constants.TAG, "load lspd error", e);
             throw new ExceptionInInitializerError(e);

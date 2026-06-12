@@ -47,9 +47,11 @@ androidComponents.onVariants { variant ->
 
     task<Copy>("copySo$variantCapped") {
         dependsOn("assemble$variantCapped")
+        dependsOn("strip${variantCapped}DebugSymbols")
+        val libDir = variant.name + "/strip${variantCapped}DebugSymbols"
         from(
             fileTree(
-                "dir" to project.layout.buildDirectory.file("intermediates/stripped_native_libs/${variant.name}/strip${variantCapped}DebugSymbols/out/lib"),
+                "dir" to project.layout.buildDirectory.file("intermediates/stripped_native_libs/${libDir}/out/lib"),
                 "include" to listOf("**/liblspatch.so")
             )
         )
@@ -72,10 +74,10 @@ tasks.getByName("clean").doLast {
 }
 
 dependencies {
-    compileOnly(projects.hiddenapi.stubs)
-    implementation(projects.core)
-    implementation(projects.hiddenapi.bridge)
-    implementation(projects.services.daemonService)
+    compileOnly("vector:stubs")
+    implementation("vector:core")
+    implementation("vector:bridge")
+    implementation("vector:daemon-service")
     implementation(projects.share.android)
     implementation(projects.share.java)
     implementation(libs.gson)

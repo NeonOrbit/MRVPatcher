@@ -27,26 +27,20 @@ dependencyResolutionManagement {
 rootProject.name = "MRVPatcher"
 include(
     ":apkzlib",
-    ":core",
-    ":hiddenapi:bridge",
-    ":hiddenapi:stubs",
     ":jar",
     ":meta-loader",
     ":patch",
     ":patch-loader",
-    ":services:daemon-service",
-    ":services:manager-service",
-    ":services:xposed-service:interface",
     ":share:android",
     ":share:java",
-    ":core:libxposed-api"
 )
 
-project(":core").projectDir = file("core/core")
-project(":hiddenapi:bridge").projectDir = file("core/hiddenapi/bridge")
-project(":hiddenapi:stubs").projectDir = file("core/hiddenapi/stubs")
-project(":services:daemon-service").projectDir = file("core/services/daemon-service")
-project(":services:manager-service").projectDir = file("core/services/manager-service")
-project(":services:xposed-service:interface").projectDir = file("core/services/xposed-service/interface")
-
-buildCache { local { removeUnusedEntriesAfterDays = 1 } }
+includeBuild("core") {
+    dependencySubstitution {
+        substitute(module("vector:axml")).using(project(":external:axml"))
+        substitute(module("vector:bridge")).using(project(":hiddenapi:bridge"))
+        substitute(module("vector:core")).using(project(":core"))
+        substitute(module("vector:daemon-service")).using(project(":services:daemon-service"))
+        substitute(module("vector:stubs")).using(project(":hiddenapi:stubs"))
+    }
+}

@@ -1,6 +1,7 @@
-cmake_minimum_required(VERSION 3.28)
 project(lspatch)
+cmake_minimum_required(VERSION 3.28)
 
+set(CMAKE_CXX_STANDARD 23)
 add_subdirectory(${CORE_ROOT} core)
 
 aux_source_directory(src SRC_LIST)
