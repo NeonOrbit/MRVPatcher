@@ -2,6 +2,7 @@ package org.lsposed.lspatch.loader.hook;
 
 import android.content.ComponentName;
 import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.ContextWrapper;
 import android.content.Intent;
@@ -46,7 +47,7 @@ public class PackageMaskHook implements AppInnerHook {
         } catch (Throwable t) {
             Log.w(LSPApplication.TAG, t.getMessage(), t);
         }
-        if (ModuleManager.isDefaultModuleLoaded()) {
+        if (ModuleManager.isDefaultModuleOutdated()) {
             try {
                 patchForChatHeadEnabler(original, masked);
             } catch (Throwable t) {
@@ -106,17 +107,17 @@ public class PackageMaskHook implements AppInnerHook {
     }
 
     private void patchAuthority() throws Throwable {
-        XC_MethodHook hook = new XC_MethodHook() {
+        var CR = ContentResolver.class;
+        XC_MethodHook providerHook = new XC_MethodHook() {
             protected void beforeHookedMethod(MethodHookParam param) {
                 if (param.args[0].toString().contains(ConstantsM.VALID_FB_PACKAGE_PREFIX)) {
                     param.setResult(null);
                 }
             }
         };
-        XposedBridge.hookAllMethods(ContentResolver.class, "acquireContentProviderClient", hook);
-        XposedBridge.hookAllMethods(ContentResolver.class, "acquireUnstableContentProviderClient", hook);
-        var query = ContentResolver.class.getDeclaredMethod("query", Uri.class, String[].class, Bundle.class, CancellationSignal.class);
-        XposedBridge.hookMethod(query, new XC_MethodHook() {
+        XposedBridge.hookAllMethods(ContentResolver.class, "acquireContentProviderClient", providerHook);
+        XposedBridge.hookAllMethods(ContentResolver.class, "acquireUnstableContentProviderClient", providerHook);
+        XC_MethodHook crHook = new XC_MethodHook() {
             protected void beforeHookedMethod(MethodHookParam param) {
                 try {
                     Uri uri = (Uri) param.args[0];
@@ -125,7 +126,11 @@ public class PackageMaskHook implements AppInnerHook {
                     }
                 } catch (Throwable ignore) { }
             }
-        });
+        };
+        XposedBridge.hookMethod(CR.getDeclaredMethod("query", Uri.class, String[].class, Bundle.class, CancellationSignal.class), crHook);
+        XposedBridge.hookMethod(CR.getDeclaredMethod("insert", Uri.class, ContentValues.class, Bundle.class), crHook);
+        XposedBridge.hookMethod(CR.getDeclaredMethod("update", Uri.class, ContentValues.class, Bundle.class), crHook);
+        XposedBridge.hookMethod(CR.getDeclaredMethod("delete", Uri.class, Bundle.class), crHook);
     }
 
     private static void patchObfuscated(Context context, String original, String masked) {

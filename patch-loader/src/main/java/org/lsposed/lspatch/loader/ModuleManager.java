@@ -18,7 +18,7 @@ import java.util.List;
 public class ModuleManager {
     private static final String TAG = LSPApplication.TAG;
 
-    private static final long DEF_MODULE_MIN = 240;
+    private static final long DEF_MODULE_MIN = 247;
     private static final String DEF_MODULE_NAME = "ChatHeadEnabler";
     private static final String DEF_MODULE_PACKAGE = "app.neonorbit.chatheadenabler";
 
@@ -26,6 +26,7 @@ public class ModuleManager {
 
     private static boolean moduleLoaded = false;
     private static boolean isInitialized = false;
+    private static boolean isDefaultOutdated = false;
 
     public static void load(Context context) {
         if (ModuleManager.isInitialized) return;
@@ -46,6 +47,10 @@ public class ModuleManager {
 
     public static boolean isDefaultModuleLoaded() {
         return MODULES.containsKey(DEF_MODULE_PACKAGE);
+    }
+
+    public static boolean isDefaultModuleOutdated() {
+        return isDefaultOutdated;
     }
 
     private static boolean isValid(Context context) {
@@ -114,8 +119,11 @@ public class ModuleManager {
 
     private static void checkMinVersionIfDefault(Context context, PackageInfo pInfo, String pkg) {
         if (pkg.equals(DEF_MODULE_PACKAGE) && pInfo.getLongVersionCode() < DEF_MODULE_MIN) {
+            isDefaultOutdated = true;
             Log.w(TAG, DEF_MODULE_NAME + " is outdated: " + pInfo.getLongVersionCode());
-            Toast.makeText(context, "Please update " + DEF_MODULE_NAME, Toast.LENGTH_LONG).show();
+            try {
+                Toast.makeText(context, "Please update " + DEF_MODULE_NAME, Toast.LENGTH_LONG).show();
+            } catch (Exception ignored) {}
         }
     }
 }

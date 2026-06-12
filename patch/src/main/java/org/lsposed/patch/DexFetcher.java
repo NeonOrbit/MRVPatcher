@@ -31,7 +31,7 @@ public final class DexFetcher {
 
     // In the masked version, the class constructor throws an exception if context.getPackageName() returns the masked package.
     //   Solution: Hook getPackageName() to return the original package during the execution of the class constructor.
-    // CMD: dexplore s Messenger.apk -rt sm -ref 'autobackupprefs' 'com.facebook.orca' 'getPackageName' 'java.util.NoSuchElementException'
+    // CMD: dexplore s Messenger.apk -rt sm -ref 'autobackupprefs' 'fbautobackupprefs' 'getPackageName' 'java.util.NoSuchElementException'
     private static List<String> orcaAutoBackupInit(Dexplore dexplore) {
         return dexplore.findClasses(DexFilter.MATCH_ALL,
             ClassFilter.builder()
@@ -39,8 +39,8 @@ public final class DexFetcher {
                 .setModifiers(Modifier.PUBLIC | Modifier.FINAL)
                 .setReferenceTypes(ReferenceTypes.builder().addString().addMethodWithDetails().build())
                 .setReferenceFilter(pool ->
-                    pool.stringsContain("autobackupprefs") && pool.stringsContain("com.facebook.orca") &&
-                        pool.contains("getPackageName") && pool.contains("java.util.NoSuchElementException")
+                    pool.stringsContain("autobackupprefs") && pool.stringsContain("fbautobackupprefs") &&
+                        pool.methodsContain("getPackageName") && pool.methodsContain("java.util.NoSuchElementException")
                 ).build(),
             1
         ).stream().map(ClassData::getClazz).collect(Collectors.toList());

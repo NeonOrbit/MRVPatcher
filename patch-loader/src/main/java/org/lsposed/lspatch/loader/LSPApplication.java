@@ -18,6 +18,7 @@ import com.google.gson.Gson;
 import org.lsposed.lspatch.loader.util.FileUtils;
 import org.lsposed.lspatch.share.Constants;
 import org.lsposed.lspatch.share.PatchConfig;
+import org.lsposed.lspd.nativebridge.SigBypass;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -77,6 +78,7 @@ public class LSPApplication {
             ModuleManager.load(appContext);
             LSPLoader.bootstrap(appContext);
             LSPLoader.initModules(appLoadedApk);
+            sigBypassOnFallbackMode(appContext);
         } catch (Throwable e) {
             Log.e(TAG, "Do hook", e);
         }
@@ -203,6 +205,21 @@ public class LSPApplication {
                 }
             } catch (Throwable e) {
                 Log.e(TAG, "Failed to lock profile: " + curProfileFile.getAbsolutePath(), e);
+            }
+        }
+    }
+
+    private static void sigBypassOnFallbackMode(Context appContext) {
+        if (LSPApplication.config.fallback) {
+            try {
+                String originApkPath;
+                try (ZipFile sourceFile = new ZipFile(appContext.getPackageResourcePath())) {
+                    originApkPath = appLoadedApk.getApplicationInfo().dataDir + "/" + MRV_DATA_DIR
+                        + "/" + sourceFile.getEntry(ORIGINAL_APK_ASSET_PATH).getCrc();
+                }
+                SigBypass.enableOpenatHook(appContext.getPackageResourcePath(), originApkPath);
+            } catch (Throwable e) {
+                Log.w(TAG, "SigBypass Failed: " + e);
             }
         }
     }
