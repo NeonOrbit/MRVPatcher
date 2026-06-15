@@ -1,5 +1,8 @@
 package org.lsposed.lspatch.share;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
 public final class ConstantsM {
@@ -41,7 +44,7 @@ public final class ConstantsM {
            !pkg.startsWith(MASK_PREFIX) && !pkg.contains(VALID_WA_PACKAGE);
   }
 
-  public static final Set<String> DEFAULT_FB_PACKAGES = Set.of(
+  public static final Set<String> DEFAULT_FB_PACKAGES = setOf(
       "com.facebook.orca",
       "com.facebook.katana",
       "com.facebook.lite",
@@ -50,7 +53,7 @@ public final class ConstantsM {
       "com.facebook.adsmanager"
   );
 
-  public static final Set<String> DEFAULT_IG_PACKAGES = Set.of(
+  public static final Set<String> DEFAULT_IG_PACKAGES = setOf(
           "com.instagram.android",
           "com.instagram.lite"
   );
@@ -63,6 +66,13 @@ public final class ConstantsM {
     if (DEFAULT_FB_PACKAGES.contains(pkg)) return DEFAULT_FB_SIGNATURE;
     if (DEFAULT_IG_PACKAGES.contains(pkg)) return DEFAULT_IG_SIGNATURE;
     throw new IllegalArgumentException(pkg);
+  }
+
+  @SafeVarargs
+  private static <T> Set<T> setOf(T... elements) {
+    HashSet<T> set = new HashSet<>(elements.length);
+    set.addAll(Arrays.asList(elements));
+    return Collections.unmodifiableSet(set);
   }
 
   public static final String DEFAULT_FB_SIGNATURE = "30820268308201d102044a9c4610300d06092a864886f7" +

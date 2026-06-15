@@ -27,8 +27,12 @@ plugins {
 }
 
 java {
-    sourceCompatibility = androidSourceCompatibility
-    targetCompatibility = androidTargetCompatibility
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(8)
 }
 
 dependencies {

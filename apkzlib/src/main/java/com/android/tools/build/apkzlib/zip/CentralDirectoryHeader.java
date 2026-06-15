@@ -153,7 +153,7 @@ public class CentralDirectoryHeader implements Cloneable {
   }
 
   public CentralDirectoryHeader link(String name, byte[] encodedFileName, GPFlags flags, ZFile file) {
-    var newData = new CentralDirectoryHeader(name,
+    CentralDirectoryHeader newData = new CentralDirectoryHeader(name,
       encodedFileName,
       uncompressedSize,
       compressInfo,

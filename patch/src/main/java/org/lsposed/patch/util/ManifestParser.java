@@ -73,7 +73,7 @@ public class ManifestParser {
      */
     public static Pair parseManifestFile(String filePath) throws IOException {
         File file = new File(filePath);
-        try (var is = new FileInputStream(file)) {
+        try (FileInputStream is = new FileInputStream(file)) {
             return parseManifestFile(is);
         }
     }

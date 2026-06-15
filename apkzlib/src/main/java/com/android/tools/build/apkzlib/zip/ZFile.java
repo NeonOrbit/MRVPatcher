@@ -1409,7 +1409,7 @@ public class ZFile implements Closeable {
     // LSPatch: write extra entries in the extra field if it's a linking
     int localHeaderSize = entry.getLocalHeaderSize();
     try {
-      for (var segment : entry.getLocalExtra().getSegments()) {
+      for (ExtraField.Segment segment : entry.getLocalExtra().getSegments()) {
         if (segment instanceof ExtraField.LinkingEntrySegment) {
           ((ExtraField.LinkingEntrySegment) segment).setOffset(localHeaderSize, offset);
         }
@@ -1780,7 +1780,7 @@ public class ZFile implements Closeable {
     Preconditions.checkArgument(linkedEntry != null, "linkedEntry is null");
     Preconditions.checkArgument(linkedEntry.getCentralDirectoryHeader().getOffset() < 0, "linkedEntry is not new file");
     Preconditions.checkArgument(!linkedEntry.isLinkingEntry(), "linkedEntry is a linking entry");
-    var linkingEntry = new StoredEntry(dstName, this, storage, linkedEntry, nestedEntry, nestedOffset, dummy);
+    StoredEntry linkingEntry = new StoredEntry(dstName, this, storage, linkedEntry, nestedEntry, nestedOffset, dummy);
     linkingEntries.add(linkingEntry);
     linkedEntry.setLocalExtraNoNotify(new ExtraField(ImmutableList.<ExtraField.Segment>builder().add(linkedEntry.getLocalExtra().getSegments().toArray(new ExtraField.Segment[0])).add(new ExtraField.LinkingEntrySegment(linkingEntry)).build()));
     reAdd(linkedEntry, PositionHint.LOWEST_OFFSET);

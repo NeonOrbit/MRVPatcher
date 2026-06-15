@@ -32,6 +32,7 @@ import com.wind.meditor.utils.PermissionType;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.io.IOUtils;
 import org.lsposed.lspatch.share.Constants;
 import org.lsposed.lspatch.share.ConstantsM;
 import org.lsposed.lspatch.share.ExtraConfig;
@@ -66,6 +67,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -226,7 +228,7 @@ public final class LSPatch {
 
     @SuppressWarnings("CallToPrintStackTrace")
     public static void main(String... args) {
-        var verbose = false;
+        boolean verbose = false;
         try {
             LSPatch lsPatch = new LSPatch(args);
             lsPatch.help |= args.length == 0;
@@ -267,7 +269,7 @@ public final class LSPatch {
         }
         final Map<String, String> results = new HashMap<>();
 
-        for (var apk : apkPaths) {
+        for (String apk : apkPaths) {
             logger.v("\nSource: " + apk);
             results.put(apk, "[failed!] " + apk);
 
@@ -291,7 +293,7 @@ public final class LSPatch {
             String packageName;
             String appComponentFactory;
             String xApkBaseName = null;
-            try (var zFile = ZFile.openReadOnly(srcApkFile)) {
+            try (ZFile zFile = ZFile.openReadOnly(srcApkFile)) {
                 InputStream xApkManifest = null;
                 StoredEntry manifestEntry = zFile.get(ANDROID_MANIFEST_XML);
                 if (manifestEntry == null) {
@@ -301,7 +303,7 @@ public final class LSPatch {
                             ZipEntry entry;
                             while ((entry = zis.getNextEntry()) != null) {
                                 if (entry.getName().equals(ANDROID_MANIFEST_XML)) {
-                                    xApkManifest = new ByteArrayInputStream(zis.readAllBytes());
+                                    xApkManifest = new ByteArrayInputStream(IOUtils.toByteArray(zis));
                                     break;
                                 }
                             }
@@ -314,8 +316,8 @@ public final class LSPatch {
                     }
                     xApkBaseName = xApkBase.getCentralDirectoryHeader().getName();
                 }
-                try (var is = (manifestEntry != null ? manifestEntry.open() : xApkManifest)) {
-                    var pair = ManifestParser.parseManifestFile(is);
+                try (InputStream is = (manifestEntry != null ? manifestEntry.open() : xApkManifest)) {
+                    ManifestParser.Pair pair = ManifestParser.parseManifestFile(is);
                     if (pair == null || pair.packageName == null || pair.packageName.isEmpty()) {
                         logger.e("Failed to parse Manifest");
                         if (multiple) logger.v("Skipping...");
@@ -376,7 +378,7 @@ public final class LSPatch {
             }
 
             try {
-                var relative = getRelativePath(outputFile);
+                String relative = getRelativePath(outputFile);
                 if (xApkBaseName == null) {
                     if (signOnly) {
                         sign(srcApkFile, outputFile, packageName);
@@ -432,7 +434,8 @@ public final class LSPatch {
     public void patchBundle(File bundle, File output, String baseName, boolean signOnly, String pkg, String appComponent, int minSdk) throws Exception {
         File temp = getTempDir(internalTempDir, bundle.getName());
         TEMPORARY_FILES_CLEANUP.add(temp);
-        try (var executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1)) {
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() - 1);
+        try {
             logger.d("extracting bundle");
             ZipHelpers.fastExtract(bundle, temp, executor, (size) -> {
                 if (internal && size > 100_000) logger.d("extracting bundle");  // simulate yield signal
@@ -443,10 +446,10 @@ public final class LSPatch {
             }
             List<Path> allPaths;
             try (Stream<Path> walk = Files.walk(temp.toPath())) {
-                allPaths = walk.filter(p -> !Files.isDirectory(p) && !p.toString().contains("META-INF")).toList();
+                allPaths = walk.filter(p -> !Files.isDirectory(p) && !p.toString().contains("META-INF")).collect(Collectors.toList());
             }
             if (!patchDir.mkdirs()) throw new IllegalStateException("Failed to create patch dir!");
-            var baseApk = new File(temp, baseName);
+            File baseApk = new File(temp, baseName);
             if (!baseApk.isFile()) {
                 throw new IllegalStateException("Base apk not found!");
             }
@@ -466,7 +469,7 @@ public final class LSPatch {
                 }
             }
             logger.d("repacking bundle");
-            var compressor = new DeflateExecutionCompressor(executor, Deflater.BEST_SPEED);
+            DeflateExecutionCompressor compressor = new DeflateExecutionCompressor(executor, Deflater.BEST_SPEED);
             try (ZFile dest = ZFile.openReadWrite(output, new ZFileOptions().setCompressor(compressor))) {
                 for (Path path : allPaths) {
                     File file = path.toFile();
@@ -487,6 +490,7 @@ public final class LSPatch {
                 walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
             } catch (IOException ignored) {}
             TEMPORARY_FILES_CLEANUP.remove(temp);
+            executor.shutdownNow();
         }
     }
 
@@ -504,13 +508,14 @@ public final class LSPatch {
             throw new PatchError("Failed to create temp file", e);
         }
 
-        try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS);
-             var srcZFile = (!fallbackMode ? ZFile.openReadOnly(srcApkFile) :
+        try (ZFile dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS);
+             ZFile srcZFile = (!fallbackMode ? ZFile.openReadOnly(srcApkFile) :
                  dstZFile.addNestedZip((ignore) -> ORIGINAL_APK_ASSET_PATH, srcApkFile, false)
              )
         ) {
-            var manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
-            try (var is = new ByteArrayInputStream(patchManifest(srcApkFile, manifest.open(), pkg, minSdk))) {
+            StoredEntry manifest = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML));
+            byte[] patchedManifest = patchManifest(srcApkFile, manifest.open(), pkg, minSdk);
+            try (ByteArrayInputStream is = new ByteArrayInputStream(patchedManifest)) {
                 dstZFile.add(ANDROID_MANIFEST_XML, is);
             } catch (IOException e) {
                 throw new PatchError("Failed to patch manifest", e);
@@ -519,14 +524,14 @@ public final class LSPatch {
             ARCH_LIBRARY_MAP.forEach((arch, lib) -> {
                 String asset = Constants.getLibraryPath(lib);
                 String entry = Constants.getLibrarySoPath(arch);
-                try (var is = getClass().getClassLoader().getResourceAsStream(asset)) {
+                try (InputStream is = getClass().getClassLoader().getResourceAsStream(asset)) {
                     dstZFile.add(entry, is, false);
                 } catch (IOException e) {
                     throw new PatchError("Failed to attach native libs", e);
                 }
             });
 
-            try (var is = getClass().getClassLoader().getResourceAsStream(Constants.META_LOADER_DEX_PATH)) {
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(Constants.META_LOADER_DEX_PATH)) {
                 String dexIndex = fallbackMode ? "" : String.valueOf(
                     srcZFile.entries().stream().filter(e -> {
                         String name = e.getCentralDirectoryHeader().getName();
@@ -538,19 +543,18 @@ public final class LSPatch {
                 throw new PatchError("Failed to attach dex", e);
             }
 
-            try (var is = getClass().getClassLoader().getResourceAsStream(LOADER_DEX_PATH)) {
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(LOADER_DEX_PATH)) {
                 dstZFile.add(LOADER_DEX_PATH, is);
             } catch (IOException e) {
                 throw new PatchError("Failed to attach assets", e);
             }
-
-            var modules = this.modules.stream().map(String::trim).filter(it -> !it.isBlank()).collect(Collectors.toList());
+            List<String> modules = this.modules.stream().map(String::trim).filter(it -> !it.isEmpty()).collect(Collectors.toList());
             Map<String, List<String>> prefetches = maskPackage ? DexFetcher.prefetch(srcApkFile) : Collections.emptyMap();
-            var config = new PatchConfig(
+            PatchConfig config = new PatchConfig(
                 appComponent, fallbackMode, fixConflict, maskPackage, loadOnAll, modules, prefetches
             );
-            var configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
-            try (var is = new ByteArrayInputStream(configBytes)) {
+            byte[] configBytes = new Gson().toJson(config).getBytes(StandardCharsets.UTF_8);
+            try (ByteArrayInputStream is = new ByteArrayInputStream(configBytes)) {
                 dstZFile.add(CONFIG_ASSET_PATH, is);
             } catch (IOException e) {
                 throw new PatchError("Failed to save config", e);
@@ -611,9 +615,10 @@ public final class LSPatch {
         try {
             FileUtils.copyFile(srcApkFile, internalApk);
             if (fixConflict) {
-                try (var dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS); var srcZFile = ZFile.openReadOnly(srcApkFile)) {
-                    try (var is = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML)).open()) {
-                        var patched = patchApkConflicts(is, packageName, silent);
+                try (ZFile dstZFile = ZFile.openReadWrite(internalApk, Z_FILE_OPTIONS);
+                     ZFile srcZFile = ZFile.openReadOnly(srcApkFile)) {
+                    try (InputStream is = Objects.requireNonNull(srcZFile.get(ANDROID_MANIFEST_XML)).open()) {
+                        byte[] patched = patchApkConflicts(is, packageName, silent);
                         dstZFile.add(ANDROID_MANIFEST_XML, new ByteArrayInputStream(patched));
                     } catch (IOException e) {
                         throw new PatchError("Failed to patch manifest", e);
@@ -627,7 +632,7 @@ public final class LSPatch {
             if (fixConflict || !fallbackMode) {
                 signApkFileInternal(internalApk, outputFile);
             } else {
-                try (var dstZFile = ZFile.openReadWrite(internalApk)) {
+                try (ZFile dstZFile = ZFile.openReadWrite(internalApk)) {
                     registerApkSigner(dstZFile);
                     dstZFile.realign();
                     dstZFile.close();
@@ -644,8 +649,8 @@ public final class LSPatch {
     }
 
     private byte[] patchApkConflicts(InputStream is, String pkg, boolean silent) throws IOException {
-        var os = new ByteArrayOutputStream();
-        var property = new ModificationProperty();
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
+        ModificationProperty property = new ModificationProperty();
         if (fixConflict) {
             if (!silent) logger.d("patching issues");
             property.setPermissionMapper((type, permission) -> (type == PermissionType.DECLARED_PERMISSION) ?
@@ -684,13 +689,13 @@ public final class LSPatch {
         if (embedSignature) {
             logger.d("adding metadata");
             try {
-                var signature = ApkSignatureHelper.getApkSignInfo(srcApkFile.getAbsolutePath());
-                var config = new Gson().toJson(new ExtraConfig(signature)).getBytes(StandardCharsets.UTF_8);
-                var metadata = Base64.getEncoder().encodeToString(config);
+                String signature = ApkSignatureHelper.getApkSignInfo(srcApkFile.getAbsolutePath());
+                byte[] config = new Gson().toJson(new ExtraConfig(signature)).getBytes(StandardCharsets.UTF_8);
+                String metadata = Base64.getEncoder().encodeToString(config);
                 property.addMetaData(new ModificationProperty.MetaData(ExtraConfig.KEY, metadata));
             } catch (Throwable ignored) {}
         }
-        var os = new ByteArrayOutputStream();
+        ByteArrayOutputStream os = new ByteArrayOutputStream();
         new ManifestEditor(is, os, property).processManifest();
         is.close(); os.flush(); os.close();
         return os.toByteArray();
@@ -724,8 +729,8 @@ public final class LSPatch {
             keyAlias = DEFAULT_SIGNER_NAME;
             keyAliasPass = keyPass;
         }
-        var keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
-        try (var is = userKey != null ? new FileInputStream(new File(userKey).getAbsoluteFile()) :
+        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        try (InputStream is = userKey != null ? Files.newInputStream(new File(userKey).getAbsoluteFile().toPath()) :
                 getClass().getClassLoader().getResourceAsStream(getDefaultKey())) {
             keyStore.load(is, keyPass);
         }
@@ -736,7 +741,7 @@ public final class LSPatch {
 
     private void signApkFileInternal(File srcApkFile, File outputFile) throws IOException, ApkFormatException, GeneralSecurityException {
         List<X509Certificate> cert = Arrays.asList((X509Certificate[]) signingKey.getCertificateChain());
-        var config = new ApkSigner.SignerConfig.Builder(DEFAULT_SIGNER_NAME, signingKey.getPrivateKey(), cert).build();
+        ApkSigner.SignerConfig config = new ApkSigner.SignerConfig.Builder(DEFAULT_SIGNER_NAME, signingKey.getPrivateKey(), cert).build();
         new ApkSigner.Builder(Collections.singletonList(config))
                      .setV1SigningEnabled(true)
                      .setV2SigningEnabled(true)
@@ -768,7 +773,7 @@ public final class LSPatch {
     }
 
     private boolean checkInputFiles() {
-        for (var path : apkPaths) {
+        for (String path : apkPaths) {
             if (!new File(path).isFile()) {
                 if (path.startsWith("-")) logger.e(" Invalid option: " + path);
                 else logger.e(" '" + path + "' does not exist");

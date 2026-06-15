@@ -420,7 +420,7 @@ public class ExtraField {
       if (!linkingEntry.isDummyEntry()) {
         LittleEndianUtils.writeUnsigned2Le(out, LINKING_ENTRY_EXTRA_DATA_FIELD_HEADER_ID);
         LittleEndianUtils.writeUnsigned2Le(out, linkingEntry.getLocalHeaderSize());
-        var offset = out.position();
+        int offset = out.position();
         linkingEntry.writeData(out, dataOffset - linkingEntry.getLocalHeaderSize() - offset);
         linkingEntry.replaceSourceFromZip(offset + zipOffset);
       } else {

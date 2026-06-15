@@ -25,8 +25,8 @@ public class NestedZip extends ZFile {
     public boolean addFileLink(StoredEntry srcEntry, String dstName) throws IOException {
         if (srcEntry == null)
             throw new IOException("Entry " + srcEntry + " does not exist in nested zip");
-        var srcName = srcEntry.getCentralDirectoryHeader().getName();
-        var offset = srcEntry.getCentralDirectoryHeader().getOffset() + srcEntry.getLocalHeaderSize();
+        String srcName = srcEntry.getCentralDirectoryHeader().getName();
+        long offset = srcEntry.getCentralDirectoryHeader().getOffset() + srcEntry.getLocalHeaderSize();
         if (srcName.equals(dstName)) {
             target.addNestedLink(entry, dstName, srcEntry, srcEntry.getCentralDirectoryHeader().getOffset(), true);
             return true;
@@ -37,7 +37,7 @@ public class NestedZip extends ZFile {
         return false;
     }
     public boolean addFileLink(String srcName, String dstName) throws IOException {
-        var srcEntry = get(srcName);
+        StoredEntry srcEntry = get(srcName);
         return addFileLink(srcEntry, dstName);
     }
 
