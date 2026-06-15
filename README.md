@@ -6,8 +6,10 @@ in Messenger (along with other Xposed modules), on non-rooted devices.
 Supported Android versions: 9 to 17+  
 Android app alternative: [MRVPatchManager](https://github.com/NeonOrbit/MRVPatchManager)
 
-### Patching Instructions
-- Download and Install [JDK 21+](https://adoptium.net/temurin/releases/?version=21)
+### Requirements
+- Java [JDK or JRE](https://adoptium.net/temurin/releases)
+
+### Instructions
 - Download the [MRVPatcher](https://github.com/NeonOrbit/MRVPatcher/releases/latest) tool
 - Rename the tool to `MRVPatcher.jar`
 - Download a Messenger APK from [ApkMirror](https://www.apkmirror.com/apk/facebook-2/messenger)
